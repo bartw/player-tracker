@@ -34,3 +34,7 @@ Verified end-to-end against live Notion: full session written (5 rows, exact can
 2. **Unsaved-changes guard**: switching the session date with unsaved edits asks for confirmation; declining keeps date and edits.
 
 Also observed during verification: the coach added a player (Louis Mantels) directly in the Notion Players database — works as designed, roster is read from the database, so the in-app "add player" from the schema ticket may never be needed.
+
+**2026-07-11 — second round of coach feedback, shipped:**
+
+3. **Absence is now recorded** (amends the schema ticket): absent players save a row with the new Absent checkbox checked and no exercise cells, so revisiting a date shows who was absent. Flipping absence on/off updates the same row; titles read `Name — date (absent)`. The `in_trash` archive path is gone from the save flow.

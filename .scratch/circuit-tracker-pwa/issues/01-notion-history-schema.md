@@ -49,7 +49,11 @@ Two new Notion databases, created by an **app setup script** (not by hand):
 ### App behavior implied
 
 - **Suggestion = prefill + gentle nudge**: each pattern prefills from the player's most recent row; a soft hint appears when a pattern has been static for a few sessions. No rule engine pre-applying positions.
-- **Absence = no row** for that player-date; prefill reaches back to the last actual row.
+- **Absence = no row** for that player-date; prefill reaches back to the last actual row. *(Amended 2026-07-11 — see Comments.)*
 - **Roster** from the Players database, with add-player in the app.
 - **Variant ladders** (ordered regression→progression movement names per pattern) live as config in app code; the real current lists get captured during the entry-UI prototype.
 - Manual backfill = same entry flow with a past date (unchanged from map).
+
+## Comments
+
+**2026-07-11 — amendment from coach feedback**: absence = no row made *absent* indistinguishable from *never logged* when revisiting a date. Amended: Circuit Sessions has an **Absent checkbox**; an absent player saves a row with the box checked and empty pattern cells. Prefill/streak logic ignores absent rows (they carry no patterns). Applied to the live database and the setup script in the entry-flow work.
