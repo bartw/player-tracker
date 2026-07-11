@@ -1,0 +1,224 @@
+<!doctype html>
+<!-- PROTOTYPE — throwaway. Answers wayfinder ticket 04: what should the after-session entry flow look like?
+     Three variants on one page, switchable via ?variant= or the floating bar / arrow keys.
+     A = Player walk (one player at a time)  B = Poster columns (pattern by pattern)  C = Confirm sheet (diff-first)
+     In-memory state only. "Save" just prints the canonical Notion strings. Delete when the ticket resolves. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE — Circuit entry flow</title>
+<style>
+  :root{
+    --bg:#f4f5f7; --card:#fff; --ink:#1a1d21; --mut:#697077; --line:#e2e5e9;
+    --acc:#0b6bcb; --acc-ink:#fff; --warn:#b25e09; --warn-bg:#fdf3e7;
+    --good:#1a7f37; --chip:#eef1f4;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  body{margin:0; font:16px/1.45 -apple-system,system-ui,sans-serif; background:var(--bg); color:var(--ink)}
+  .phone{max-width:430px; margin:0 auto; min-height:100vh; background:var(--bg); padding:12px 12px 96px}
+  h1{font-size:18px; margin:4px 0 2px}
+  .sub{color:var(--mut); font-size:13px; margin-bottom:10px}
+  .datebar{display:flex; gap:8px; align-items:center; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:12px}
+  .datebar label{font-size:13px; color:var(--mut)}
+  .datebar input{border:none; font:inherit; font-weight:600; background:transparent}
+  .backfill{margin-left:auto; font-size:12px; color:var(--warn); background:var(--warn-bg); padding:2px 8px; border-radius:99px; display:none}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px; margin-bottom:10px}
+  .pname{font-weight:700; font-size:16px; display:flex; align-items:center; gap:8px}
+  .absent-toggle{margin-left:auto; font-size:12px; color:var(--mut); display:flex; gap:6px; align-items:center}
+  .absent .patrows{opacity:.25; pointer-events:none}
+  .patrow{display:flex; flex-wrap:wrap; align-items:center; gap:6px; padding:9px 0; border-top:1px solid var(--line)}
+  .patrow:first-child{border-top:none}
+  .plabel{font-size:11px; letter-spacing:.4px; color:var(--mut); width:64px; flex:none; text-transform:uppercase}
+  select,.num{font:inherit; border:1px solid var(--line); border-radius:9px; background:#fafbfc; padding:6px 8px}
+  select{max-width:170px}
+  .stepper{display:flex; align-items:center; border:1px solid var(--line); border-radius:9px; overflow:hidden; background:#fafbfc}
+  .stepper button{border:none; background:transparent; font-size:19px; width:34px; height:34px; color:var(--acc)}
+  .stepper span{min-width:44px; text-align:center; font-weight:600; font-variant-numeric:tabular-nums}
+  .bandchips{display:flex; gap:4px}
+  .bchip{border:1px solid var(--line); border-radius:99px; padding:4px 9px; font-size:12px; background:#fafbfc}
+  .bchip.on{background:var(--ink); color:#fff; border-color:var(--ink)}
+  .bchip.on.yellow{background:#c9a400} .bchip.on.blue{background:#0b6bcb} .bchip.on.none{background:var(--good)}
+  .nudge{width:100%; font-size:12px; color:var(--warn); background:var(--warn-bg); border-radius:8px; padding:5px 8px}
+  .savebar{position:sticky; bottom:64px; margin-top:14px}
+  .save{width:100%; padding:14px; font:inherit; font-weight:700; color:var(--acc-ink); background:var(--acc); border:none; border-radius:14px}
+  .walknav{display:flex; gap:8px; margin:10px 0}
+  .walknav button{flex:1; padding:11px; font:inherit; font-weight:600; border:1px solid var(--line); border-radius:12px; background:var(--card)}
+  .walknav .primary{background:var(--acc); color:#fff; border-color:var(--acc)}
+  .dots{display:flex; gap:5px; justify-content:center; margin:6px 0}
+  .dots i{width:8px;height:8px;border-radius:99px;background:var(--line)} .dots i.on{background:var(--acc)} .dots i.abs{background:var(--warn)}
+  .colhead{position:sticky; top:0; background:var(--bg); padding:8px 0; font-weight:700; z-index:2}
+  .cell-name{width:110px; flex:none; font-weight:600; font-size:14px}
+  .diffrow{display:flex; align-items:center; gap:8px; padding:11px 4px; border-top:1px solid var(--line)}
+  .diffrow:first-child{border-top:none}
+  .diffsum{font-size:13px; color:var(--mut); flex:1; min-width:0}
+  .diffsum b{color:var(--ink)}
+  .status{font-size:12px; padding:3px 9px; border-radius:99px; background:var(--chip); flex:none}
+  .status.changed{background:#e7f0fb; color:var(--acc)} .status.abs{background:var(--warn-bg); color:var(--warn)}
+  .sheet-back{position:fixed; inset:0; background:rgba(0,0,0,.35); display:none; z-index:8}
+  .sheet{position:fixed; left:0; right:0; bottom:0; max-width:430px; margin:0 auto; background:var(--card); border-radius:18px 18px 0 0; padding:14px 14px 90px; z-index:9; max-height:82vh; overflow:auto; display:none}
+  .sheet.open,.sheet-back.open{display:block}
+  .dump{white-space:pre-wrap; font:12px/1.6 ui-monospace,monospace; background:#101418; color:#c7e3ff; border-radius:12px; padding:12px; margin-top:10px; display:none}
+  .switcher{position:fixed; bottom:12px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:4px; background:#101418; color:#fff; border-radius:99px; padding:6px 10px; box-shadow:0 6px 20px rgba(0,0,0,.3); z-index:20; font-size:13px}
+  .switcher button{background:transparent; border:none; color:#fff; font-size:17px; padding:2px 8px}
+  .switcher b{min-width:170px; text-align:center; font-weight:600}
+</style>
+</head>
+<body>
+<div class="phone" id="app"></div>
+
+<div class="switcher">
+  <button onclick="cycle(-1)">←</button><b id="vlabel"></b><button onclick="cycle(1)">→</button>
+</div>
+
+<script>
+/* ---------- domain config (variant ladders = placeholder from the stale doc — coach corrects during review) ---------- */
+const PATTERNS = [
+  {id:'hpush', label:'H-push', ladder:['Hands-elevated push-up','Hand-release push-up','Deficit push-up'], kg:false},
+  {id:'hpull', label:'H-pull', ladder:['Inverted row — feet lower','Inverted row','Inverted row — feet higher'], kg:false},
+  {id:'vpush', label:'V-push', ladder:['Hands-elevated pike','Pike push-up','Feet-elevated pike push-up'], kg:false},
+  {id:'vpull', label:'V-pull', pullup:true},
+  {id:'slhinge', label:'SL-hinge', ladder:['SL-RDL (no KB)','SL-RDL'], kg:true},
+  {id:'slsquat', label:'SL-squat', ladder:['Split squat','Bulgarian split squat'], kg:true},
+];
+const BANDS = ['black','yellow','blue','none'];
+
+/* last-session data: Linus + Lars from the real Notion tracker; others = no history (session-1 defaults) */
+const LAST = {
+  'Linus Wijnants': {hpush:{v:1,s:3,r:6}, hpull:{v:1,s:3,r:8}, vpush:{v:1,s:2,r:4}, vpull:{reps:[5,4,3],band:'yellow'}, slhinge:{v:1,s:2,r:6,kg:4}, slsquat:{v:1,s:2,r:6,kg:4}},
+  'Lars Goris':     {hpush:{v:1,s:3,r:6}, hpull:{v:1,s:3,r:4}, vpush:{v:1,s:2,r:4}, vpull:{reps:[3,2,2],band:'black'},  slhinge:{v:1,s:2,r:6,kg:4}, slsquat:{v:1,s:2,r:8,kg:4}},
+};
+const DEFAULTS = {hpush:{v:1,s:2,r:6}, hpull:{v:1,s:2,r:6}, vpush:{v:1,s:2,r:4}, vpull:{reps:[0,0,0],band:'black'}, slhinge:{v:1,s:2,r:6,kg:0}, slsquat:{v:1,s:2,r:6,kg:0}};
+const STATIC_SESSIONS = {'Linus Wijnants':{hpush:3},'Lars Goris':{slhinge:4}}; // fake "unchanged for N sessions" counts to demo the nudge
+const PLAYERS = ['Linus Wijnants','Lars Goris','Finn Pallen','Tijs Koninckx','Senn Dols'];
+
+/* ---------- state ---------- */
+const clone = o => JSON.parse(JSON.stringify(o));
+const state = {
+  date: new Date().toISOString().slice(0,10),
+  walkIndex: 0, sheetPlayer: null,
+  players: Object.fromEntries(PLAYERS.map(p => [p, {absent:false, hasHistory:!!LAST[p], data: clone(LAST[p] || DEFAULTS)}]))
+};
+const baseline = clone(state.players);
+
+/* ---------- helpers ---------- */
+const $ = s => document.querySelector(s);
+function canonical(p, d){ // the string that would be written to Notion
+  const pat = PATTERNS.find(x=>x.id===p);
+  if (pat.pullup) return `Pull-up ${d.reps.join('/')}` + (d.band!=='none' ? ` ${d.band}` : '');
+  return `${pat.ladder[d.v]} ${d.s}×${d.r}` + (pat.kg && d.kg ? ` ${d.kg}kg` : '');
+}
+function changed(name, pid){ return JSON.stringify(state.players[name].data[pid]) !== JSON.stringify(baseline[name].data[pid]); }
+function anyChanged(name){ return PATTERNS.some(p=>changed(name,p.id)); }
+function nudge(name, pid){
+  const n = (STATIC_SESSIONS[name]||{})[pid];
+  return (n && !changed(name,pid)) ? `Unchanged for ${n} sessions — time to progress?` : null;
+}
+function isToday(){ return state.date === new Date().toISOString().slice(0,10); }
+
+/* ---------- shared controls ---------- */
+function stepper(val, oninput, min=0){ return `
+  <span class="stepper"><button onclick="event.preventDefault();${oninput}(-1)">−</button><span>${val}</span><button onclick="${oninput}(1)">+</button></span>`;}
+function patternRow(name, pat){
+  const d = state.players[name].data[pat.id]; const nud = nudge(name, pat.id);
+  let ctl;
+  if (pat.pullup){
+    ctl = d.reps.map((r,i)=>stepper(r,`bump('${name}','${pat.id}','reps.${i}',`)).join('')
+        + `<span class="bandchips">` + BANDS.map(b=>`<button class="bchip ${b} ${d.band===b?'on':''}" onclick="setBand('${name}','${b}')">${b}</button>`).join('') + `</span>`;
+  } else {
+    ctl = `<select onchange="setVar('${name}','${pat.id}',this.selectedIndex)">`
+        + pat.ladder.map((v,i)=>`<option ${i===d.v?'selected':''}>${v}</option>`).join('') + `</select>`
+        + stepper(d.s,`bump('${name}','${pat.id}','s',`) + `<span style="color:var(--mut)">×</span>` + stepper(d.r,`bump('${name}','${pat.id}','r',`)
+        + (pat.kg ? stepper(d.kg,`bump('${name}','${pat.id}','kg',`)+`<span style="font-size:12px;color:var(--mut)">kg</span>` : '');
+  }
+  return `<div class="patrow"><span class="plabel">${pat.label}</span>${ctl}${nud?`<span class="nudge">💡 ${nud}</span>`:''}</div>`;
+}
+function playerCard(name, {compactHead=false}={}){
+  const P = state.players[name];
+  return `<div class="card ${P.absent?'absent':''}">
+    <div class="pname">${name}${P.hasHistory?'':' <span class="status">first entry</span>'}
+      <label class="absent-toggle"><input type="checkbox" ${P.absent?'checked':''} onchange="toggleAbsent('${name}')">absent</label>
+    </div>
+    <div class="patrows">${PATTERNS.map(p=>patternRow(name,p)).join('')}</div>
+  </div>`;
+}
+function dateBar(){
+  return `<div class="datebar"><label>Session</label>
+    <input type="date" value="${state.date}" onchange="setDate(this.value)">
+    <span class="backfill" style="display:${isToday()?'none':'inline'}">backfill</span></div>`;
+}
+function saveBtn(){ return `<div class="savebar"><button class="save" onclick="save()">Save session → Notion</button></div><div class="dump" id="dump"></div>`; }
+
+/* ---------- variants ---------- */
+const VARIANTS = {
+  A: {name:'Player walk', render(){
+    const name = PLAYERS[state.walkIndex]; const P = state.players[name];
+    return `<h1>Log session</h1><div class="sub">One player at a time — like walking the poster.</div>
+      ${dateBar()}
+      <div class="dots">${PLAYERS.map((p,i)=>`<i class="${i===state.walkIndex?'on':state.players[p].absent?'abs':''}"></i>`).join('')}</div>
+      ${playerCard(name)}
+      <div class="walknav">
+        <button onclick="walk(-1)" ${state.walkIndex===0?'disabled':''}>← Prev</button>
+        <button class="primary" onclick="walk(1)">${state.walkIndex===PLAYERS.length-1 ? 'Done' : (P.absent ? 'Skip →' : 'Next →')}</button>
+      </div>
+      ${state.walkIndex===PLAYERS.length-1 ? saveBtn() : '<div class="sub" style="text-align:center">Save appears on the last player</div>'}`;
+  }},
+  B: {name:'Poster columns', render(){
+    return `<h1>Log session</h1><div class="sub">Pattern by pattern — transcribe each poster column.</div>
+      ${dateBar()}
+      ${PATTERNS.map(pat=>`<div class="colhead">${pat.label}</div><div class="card">
+        ${PLAYERS.map(name=>{
+          const P=state.players[name];
+          return `<div class="patrow ${P.absent?'absent':''}"><span class="cell-name">${name.split(' ')[0]}</span>
+            ${P.absent?'<span class="status abs">absent</span>':patternRow(name,pat).replace(`<span class="plabel">${pat.label}</span>`,'')}</div>`;
+        }).join('')}</div>`).join('')}
+      <div class="card"><b style="font-size:14px">Absent today</b><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+        ${PLAYERS.map(n=>`<button class="bchip ${state.players[n].absent?'on':''}" onclick="toggleAbsent('${n}')">${n.split(' ')[0]}</button>`).join('')}</div></div>
+      ${saveBtn()}`;
+  }},
+  C: {name:'Confirm sheet', render(){
+    return `<h1>Log session</h1><div class="sub">Everything prefilled from last time — tap only what changed.</div>
+      ${dateBar()}
+      <div class="card">${PLAYERS.map(name=>{
+        const P=state.players[name];
+        const st = P.absent ? '<span class="status abs">absent</span>' : anyChanged(name) ? '<span class="status changed">edited</span>' : '<span class="status">same as last</span>';
+        const sum = PATTERNS.filter(p=>changed(name,p.id)).map(p=>`<b>${p.label}</b> ${canonical(p.id,P.data[p.id])}`).join(' · ') || 'carries last session forward';
+        return `<div class="diffrow" onclick="openSheet('${name}')"><span class="cell-name">${name.split(' ')[0]}</span><span class="diffsum">${P.absent?'no row will be written':sum}</span>${st}</div>`;
+      }).join('')}</div>
+      ${saveBtn()}
+      <div class="sheet-back ${state.sheetPlayer?'open':''}" onclick="closeSheet()"></div>
+      <div class="sheet ${state.sheetPlayer?'open':''}">${state.sheetPlayer ? playerCard(state.sheetPlayer) + '<button class="save" onclick="closeSheet()">Done</button>' : ''}</div>`;
+  }},
+};
+
+/* ---------- actions ---------- */
+let current = new URLSearchParams(location.search).get('variant') || 'A';
+function render(){ $('#vlabel').textContent = `${current} — ${VARIANTS[current].name}`; $('#app').innerHTML = VARIANTS[current].render(); }
+function cycle(d){ const ks=Object.keys(VARIANTS); current = ks[(ks.indexOf(current)+d+ks.length)%ks.length];
+  history.replaceState(null,'',`?variant=${current}`); render(); }
+function walk(d){ state.walkIndex = Math.max(0, Math.min(PLAYERS.length-1, state.walkIndex+d)); render(); }
+function setDate(v){ state.date = v; render(); }
+function toggleAbsent(n){ state.players[n].absent = !state.players[n].absent; render(); }
+function setVar(n,p,i){ state.players[n].data[p].v = i; render(); }
+function setBand(n,b){ state.players[n].data.vpull.band = b; render(); }
+function bump(n,p,path,d){ const o=state.players[n].data[p]; const [k,i]=path.split('.');
+  if(i!==undefined) o[k][+i]=Math.max(0,o[k][+i]+d); else o[k]=Math.max(k==='s'?1:0,o[k]+d); render(); }
+function openSheet(n){ if(!state.players[n].absent){ state.sheetPlayer=n; render(); } else { toggleAbsent(n); } }
+function closeSheet(){ state.sheetPlayer=null; render(); }
+function save(){
+  const rows = PLAYERS.filter(n=>!state.players[n].absent).map(n=>
+    `— ${n} — ${state.date}\n` + PATTERNS.map(p=>`   ${p.label.padEnd(9)} ${canonical(p.id, state.players[n].data[p.id])}`).join('\n'));
+  const skipped = PLAYERS.filter(n=>state.players[n].absent);
+  const d = $('#dump'); d.style.display='block';
+  d.textContent = `WOULD WRITE ${rows.length} ROWS TO NOTION (prototype writes nothing)\n\n${rows.join('\n\n')}`
+    + (skipped.length?`\n\nNO ROW (absent): ${skipped.join(', ')}`:'');
+  d.scrollIntoView({behavior:'smooth'});
+}
+document.addEventListener('keydown', e=>{
+  if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)) return;
+  if(e.key==='ArrowLeft')cycle(-1); if(e.key==='ArrowRight')cycle(1);
+});
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,242 @@
+<!doctype html>
+<!-- PROTOTYPE — throwaway. Answers wayfinder ticket 05: what should the progress view look like?
+     Three variants via ?variant= or the floating bar / arrow keys:
+     A = Report card (per-player, sparkline per pattern)  B = Team board (players × patterns trend grid)  C = Changelog feed (what changed, per session)
+     Fake 4-week history, in-memory. Delete when the ticket resolves. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE — Circuit progress view</title>
+<style>
+  :root{
+    --bg:#f4f5f7; --card:#fff; --ink:#1a1d21; --mut:#697077; --line:#e2e5e9;
+    --acc:#0b6bcb; --acc-soft:#dbe9f8; --up:#1a7f37; --down:#b3261e; --flat:#8a5a00; --flat-bg:#fdf3e7; --chip:#eef1f4;
+  }
+  *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
+  body{margin:0; font:16px/1.45 -apple-system,system-ui,sans-serif; background:var(--bg); color:var(--ink)}
+  .phone{max-width:430px; margin:0 auto; min-height:100vh; padding:12px 12px 96px}
+  h1{font-size:18px; margin:4px 0 2px}
+  .sub{color:var(--mut); font-size:13px; margin-bottom:10px}
+  .chips{display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px}
+  .chip{border:1px solid var(--line); border-radius:99px; padding:7px 13px; font:inherit; font-size:14px; background:var(--card)}
+  .chip.on{background:var(--ink); color:#fff; border-color:var(--ink)}
+  .card{background:var(--card); border:1px solid var(--line); border-radius:14px; padding:12px; margin-bottom:10px}
+  .pathead{display:flex; align-items:baseline; gap:8px; margin-bottom:2px}
+  .patname{font-size:11px; letter-spacing:.4px; color:var(--mut); text-transform:uppercase}
+  .current{font-weight:700; font-size:15px}
+  .trend{font-size:12px; margin-left:auto; display:flex; align-items:center; gap:4px}
+  .trend.up{color:var(--up)} .trend.down{color:var(--down)} .trend.flat{color:var(--flat)}
+  svg{display:block; width:100%; height:auto}
+  .bandstrip{display:flex; gap:2px; margin-top:3px}
+  .bandstrip i{flex:1; height:6px; border-radius:3px}
+  .bandstrip .black{background:#1a1d21} .bandstrip .yellow{background:#c9a400} .bandstrip .blue{background:#0b6bcb} .bandstrip .none{background:#1a7f37} .bandstrip .abs{background:var(--line)}
+  .bandlegend{font-size:11px; color:var(--mut); margin-top:3px}
+  table{width:100%; border-collapse:collapse; font-size:13px}
+  th{font-size:10px; letter-spacing:.4px; text-transform:uppercase; color:var(--mut); font-weight:600; text-align:left; padding:6px 4px; border-bottom:1px solid var(--line)}
+  td{padding:8px 4px; border-bottom:1px solid var(--line); vertical-align:top}
+  .cellpos{font-size:11px; color:var(--mut)}
+  .g{font-weight:700} .g.up{color:var(--up)} .g.down{color:var(--down)} .g.flat{color:var(--flat)}
+  .flatbadge{display:inline-block; background:var(--flat-bg); color:var(--flat); border-radius:6px; font-size:10px; padding:1px 5px}
+  .sess{margin-bottom:14px}
+  .sessdate{font-weight:700; font-size:14px; margin-bottom:6px; position:sticky; top:0; background:var(--bg); padding:6px 0}
+  .ev{display:flex; gap:8px; padding:8px 10px; border-radius:10px; background:var(--card); border:1px solid var(--line); margin-bottom:6px; font-size:14px}
+  .ev .icon{flex:none} .ev .who{font-weight:700}
+  .ev .what{color:var(--mut); font-size:13px}
+  .ev.up{border-left:3px solid var(--up)} .ev.down{border-left:3px solid var(--down)} .ev.info{border-left:3px solid var(--line)}
+  .quiet{color:var(--mut); font-size:13px; padding:4px 2px}
+  .switcher{position:fixed; bottom:12px; left:50%; transform:translateX(-50%); display:flex; align-items:center; gap:4px; background:#101418; color:#fff; border-radius:99px; padding:6px 10px; box-shadow:0 6px 20px rgba(0,0,0,.3); z-index:20; font-size:13px}
+  .switcher button{background:transparent; border:none; color:#fff; font-size:17px; padding:2px 8px}
+  .switcher b{min-width:170px; text-align:center; font-weight:600}
+</style>
+</head>
+<body>
+<div class="phone" id="app"></div>
+<div class="switcher"><button onclick="cycle(-1)">←</button><b id="vlabel"></b><button onclick="cycle(1)">→</button></div>
+
+<script>
+/* ---------- fake history: Mon/Wed/Fri sessions, 15 Jun → 9 Jul 2026 ---------- */
+const PATTERNS = [
+  {id:'hpush', label:'H-push'}, {id:'hpull', label:'H-pull'}, {id:'vpush', label:'V-push'},
+  {id:'vpull', label:'V-pull', pullup:true}, {id:'slhinge', label:'SL-hinge', kg:true}, {id:'slsquat', label:'SL-squat', kg:true},
+];
+const DATES = ['2026-06-15','2026-06-17','2026-06-19','2026-06-22','2026-06-24','2026-06-26','2026-06-29','2026-07-01','2026-07-04'];
+// helper builders: L=ladder entry {v:variantName,s,r,kg?}, P=pullup {reps:[..],band}
+const L=(v,s,r,kg)=>({v,s,r,...(kg!==undefined?{kg}:{})}), P=(a,b,c,band)=>({reps:[a,b,c],band});
+function series(...vals){ return Object.fromEntries(DATES.map((d,i)=>[d, vals[i]])); } // undefined = absent
+const HIST = {
+ 'Linus Wijnants':{
+  hpush: series(L('Hand-release push-up',2,8),L('Hand-release push-up',3,6),L('Hand-release push-up',3,6),L('Hand-release push-up',3,8),L('Hand-release push-up',3,10),L('Deficit push-up',2,4),L('Deficit push-up',2,6),L('Deficit push-up',2,6),L('Deficit push-up',2,8)),
+  hpull: series(L('Inverted row',2,8),L('Inverted row',3,6),L('Inverted row',3,6),L('Inverted row',3,6),L('Inverted row',3,8),L('Inverted row',3,8),L('Inverted row',3,8),L('Inverted row',3,8),L('Inverted row',3,8)),
+  vpush: series(L('Pike push-up',2,4),L('Pike push-up',2,4),L('Pike push-up',2,6),L('Pike push-up',2,6),L('Pike push-up',2,6),L('Pike push-up',2,8),L('Pike push-up',2,8),L('Pike push-up',3,6),L('Pike push-up',2,4)),
+  vpull: series(P(3,3,2,'yellow'),P(4,3,3,'yellow'),P(4,4,3,'yellow'),P(5,4,3,'yellow'),P(5,4,4,'yellow'),P(6,5,4,'yellow'),P(6,5,5,'yellow'),P(4,3,2,'blue'),P(5,4,3,'blue')),
+  slhinge: series(L('SL-RDL',2,6,4),L('SL-RDL',2,6,4),L('SL-RDL',2,8,4),L('SL-RDL',2,8,4),L('SL-RDL',2,8,6),L('SL-RDL',2,6,6),L('SL-RDL',2,8,6),L('SL-RDL',3,6,6),L('SL-RDL',3,6,6)),
+  slsquat: series(L('Bulgarian split squat',2,6,4),L('Bulgarian split squat',2,6,4),L('Bulgarian split squat',2,6,4),L('Bulgarian split squat',2,8,4),L('Bulgarian split squat',2,8,4),L('Bulgarian split squat',2,8,6),L('Bulgarian split squat',2,8,6),L('Bulgarian split squat',3,6,6),L('Bulgarian split squat',3,6,6)),
+ },
+ 'Lars Goris':{
+  hpush: series(L('Hand-release push-up',2,6),L('Hand-release push-up',2,8),L('Hand-release push-up',2,8),L('Hand-release push-up',3,6),L('Hand-release push-up',3,6),L('Hand-release push-up',3,6),undefined,L('Hand-release push-up',3,6),L('Hand-release push-up',3,6)),
+  hpull: series(L('Inverted row',2,6),L('Inverted row',2,6),L('Inverted row',2,8),L('Inverted row',2,8),L('Inverted row',3,4),L('Inverted row',3,4),undefined,L('Inverted row',3,4),L('Inverted row',3,4)),
+  vpush: series(L('Hands-elevated pike',2,8),L('Pike push-up',2,4),L('Pike push-up',2,4),L('Pike push-up',2,6),L('Pike push-up',2,6),L('Pike push-up',2,6),undefined,L('Pike push-up',2,4),L('Pike push-up',2,4)),
+  vpull: series(P(2,1,1,'black'),P(2,2,1,'black'),P(3,2,2,'black'),P(3,2,2,'black'),P(3,3,2,'black'),P(4,3,3,'black'),undefined,P(3,2,2,'black'),P(3,2,2,'black')),
+  slhinge: series(L('SL-RDL',2,6,4),L('SL-RDL',2,6,4),L('SL-RDL',2,6,4),L('SL-RDL',2,6,4),L('SL-RDL',2,6,4),L('SL-RDL',2,6,4),undefined,L('SL-RDL',2,6,4),L('SL-RDL',2,6,4)),
+  slsquat: series(L('Bulgarian split squat',2,6,4),L('Bulgarian split squat',2,6,4),L('Bulgarian split squat',2,8,4),L('Bulgarian split squat',2,8,4),L('Bulgarian split squat',2,8,4),L('Bulgarian split squat',2,8,4),undefined,L('Bulgarian split squat',2,8,4),L('Bulgarian split squat',2,8,4)),
+ },
+ 'Finn Pallen':{
+  hpush: series(L('Hands-elevated push-up',2,6),L('Hands-elevated push-up',2,8),undefined,L('Hands-elevated push-up',3,6),undefined,L('Hands-elevated push-up',3,8),L('Hand-release push-up',2,4),L('Hand-release push-up',2,6),L('Hand-release push-up',2,6)),
+  hpull: series(L('Inverted row — feet lower',2,6),L('Inverted row — feet lower',2,8),undefined,L('Inverted row — feet lower',3,6),undefined,L('Inverted row',2,4),L('Inverted row',2,4),L('Inverted row',2,6),L('Inverted row',2,6)),
+  vpush: series(L('Hands-elevated pike',2,4),L('Hands-elevated pike',2,6),undefined,L('Hands-elevated pike',2,6),undefined,L('Hands-elevated pike',2,8),L('Hands-elevated pike',2,8),L('Hands-elevated pike',3,6),L('Hands-elevated pike',3,6)),
+  vpull: series(P(1,1,0,'black'),P(1,1,1,'black'),undefined,P(2,1,1,'black'),undefined,P(2,2,1,'black'),P(2,2,2,'black'),P(3,2,2,'black'),P(3,3,2,'black')),
+  slhinge: series(L('SL-RDL (no KB)',2,6),L('SL-RDL (no KB)',2,8),undefined,L('SL-RDL (no KB)',2,8),undefined,L('SL-RDL',2,6,4),L('SL-RDL',2,6,4),L('SL-RDL',2,6,4),L('SL-RDL',2,8,4)),
+  slsquat: series(L('Split squat',2,8),L('Split squat',2,8),undefined,L('Bulgarian split squat',2,4),undefined,L('Bulgarian split squat',2,6),L('Bulgarian split squat',2,6),L('Bulgarian split squat',2,6),L('Bulgarian split squat',2,8)),
+ },
+ 'Tijs Koninckx':{
+  hpush: series(L('Hand-release push-up',2,6),L('Hand-release push-up',2,6),L('Hand-release push-up',2,8),L('Hand-release push-up',2,8),L('Hand-release push-up',3,6),L('Hand-release push-up',3,6),L('Hand-release push-up',3,8),L('Hand-release push-up',3,8),L('Hand-release push-up',3,10)),
+  hpull: series(L('Inverted row',2,6),L('Inverted row',2,8),L('Inverted row',2,8),L('Inverted row',3,6),L('Inverted row',3,6),L('Inverted row',3,8),L('Inverted row',3,8),L('Inverted row',3,8),L('Inverted row',3,10)),
+  vpush: series(L('Pike push-up',2,6),L('Pike push-up',2,6),L('Pike push-up',2,8),L('Pike push-up',2,8),L('Pike push-up',3,6),L('Pike push-up',3,6),L('Pike push-up',3,8),L('Pike push-up',3,8),L('Feet-elevated pike push-up',2,4)),
+  vpull: series(P(4,3,3,'yellow'),P(4,4,3,'yellow'),P(5,4,4,'yellow'),P(5,5,4,'yellow'),P(6,5,4,'yellow'),P(4,3,3,'blue'),P(4,4,3,'blue'),P(5,4,3,'blue'),P(5,4,4,'blue')),
+  slhinge: series(L('SL-RDL',2,6,4),L('SL-RDL',2,8,4),L('SL-RDL',2,8,4),L('SL-RDL',2,8,6),L('SL-RDL',2,8,6),L('SL-RDL',3,6,6),L('SL-RDL',3,6,6),L('SL-RDL',3,8,6),L('SL-RDL',3,8,6)),
+  slsquat: series(L('Bulgarian split squat',2,6,4),L('Bulgarian split squat',2,6,6),L('Bulgarian split squat',2,8,6),L('Bulgarian split squat',2,8,6),L('Bulgarian split squat',3,6,6),L('Bulgarian split squat',3,6,6),L('Bulgarian split squat',3,6,8),L('Bulgarian split squat',3,8,8),L('Bulgarian split squat',3,8,8)),
+ },
+ 'Senn Dols':{
+  hpush: series(L('Hand-release push-up',2,4),L('Hand-release push-up',2,6),L('Hand-release push-up',2,6),L('Hand-release push-up',2,6),L('Hand-release push-up',2,8),L('Hand-release push-up',2,8),L('Hand-release push-up',2,8),L('Hand-release push-up',2,8),L('Hand-release push-up',2,8)),
+  hpull: series(L('Inverted row — feet lower',2,8),L('Inverted row',2,4),L('Inverted row',2,6),L('Inverted row',2,6),L('Inverted row',2,6),L('Inverted row',2,8),L('Inverted row',2,8),L('Inverted row',2,8),L('Inverted row',3,4)),
+  vpush: series(L('Pike push-up',2,4),L('Pike push-up',2,4),L('Pike push-up',2,6),L('Pike push-up',2,6),L('Pike push-up',2,6),L('Pike push-up',2,6),L('Pike push-up',2,6),L('Pike push-up',2,6),L('Pike push-up',2,6)),
+  vpull: series(P(2,2,1,'yellow'),P(3,2,2,'yellow'),P(3,3,2,'yellow'),P(3,3,3,'yellow'),P(4,3,3,'yellow'),P(4,4,3,'yellow'),P(4,4,4,'yellow'),P(5,4,4,'yellow'),P(5,5,4,'yellow')),
+  slhinge: series(L('SL-RDL',2,6,4),L('SL-RDL',2,6,4),L('SL-RDL',2,8,4),L('SL-RDL',2,8,4),L('SL-RDL',2,8,4),L('SL-RDL',3,6,4),L('SL-RDL',3,6,4),L('SL-RDL',3,6,6),L('SL-RDL',3,6,6)),
+  slsquat: series(L('Bulgarian split squat',2,8,4),L('Bulgarian split squat',2,8,4),L('Bulgarian split squat',3,6,4),L('Bulgarian split squat',3,6,4),L('Bulgarian split squat',3,8,4),L('Split squat',2,6),L('Split squat',2,8),L('Bulgarian split squat',2,4,4),L('Bulgarian split squat',2,6,4)),
+ },
+};
+const PLAYERS = Object.keys(HIST);
+
+/* ---------- derived ---------- */
+const fmt = d => new Date(d).toLocaleDateString('en-GB',{day:'numeric',month:'short'});
+const vol = e => !e ? null : (e.reps ? e.reps.reduce((a,b)=>a+b,0) : e.s*e.r);
+const posStr = e => !e ? '—' : (e.reps ? `${e.reps.join('/')} ${e.band}` : `${e.v} ${e.s}×${e.r}${e.kg?` ${e.kg}kg`:''}`);
+const shortPos = e => !e ? '—' : (e.reps ? `${e.reps.join('/')} ${e.band}` : `${e.s}×${e.r}${e.kg?` ${e.kg}kg`:''}`);
+function entries(name, pid){ return DATES.map(d=>({date:d, e:HIST[name][pid][d]})); }
+function lastTwo(name, pid){ const p=entries(name,pid).filter(x=>x.e); return [p[p.length-2]?.e, p[p.length-1]?.e]; }
+function trendOf(name, pid){
+  const [prev, cur] = lastTwo(name, pid); if(!prev||!cur) return {g:'flat',label:'—'};
+  const es = entries(name,pid).filter(x=>x.e);
+  if (cur.reps){ // pull-up: band drop beats volume
+    const bandOrder=['black','yellow','blue','none'];
+    if (bandOrder.indexOf(cur.band) > bandOrder.indexOf(prev.band)) return {g:'up',label:'band ↓'};
+    if (bandOrder.indexOf(cur.band) < bandOrder.indexOf(prev.band)) return {g:'down',label:'band ↑'};
+  } else {
+    if (cur.v !== prev.v) return {g: vol(cur)<vol(prev)?'up':'up', label:'new variant'}; // variant change = progress event (restart at lower volume is expected)
+  }
+  const dv = vol(cur)-vol(prev);
+  if (dv>0) return {g:'up',label:`+${dv} reps`};
+  if (dv<0) return {g:'down',label:`${dv} reps`};
+  let n=1; for(let i=es.length-2;i>=0;i--){ if(JSON.stringify(es[i].e)===JSON.stringify(cur)) n++; else break; }
+  return {g:'flat',label:`static ×${n}`, n};
+}
+function changeEvents(){ // for variant C: one event per player-pattern-session where something changed
+  const evs=[];
+  for (const name of PLAYERS) for (const pat of PATTERNS){
+    const es = entries(name, pat.id).filter(x=>x.e);
+    for (let i=1;i<es.length;i++){
+      const a=es[i-1].e, b=es[i].e; if(JSON.stringify(a)===JSON.stringify(b)) continue;
+      let icon='📈', cls='up', what=`${posStr(a)} → ${posStr(b)}`;
+      if (b.reps){ const bo=['black','yellow','blue','none'];
+        if (bo.indexOf(b.band)>bo.indexOf(a.band)){icon='🎉'; what=`band ${a.band} → ${b.band}`;}
+        else if (bo.indexOf(b.band)<bo.indexOf(a.band)){icon='🔻'; cls='down'; what=`band ${a.band} → ${b.band}`;}
+        else if (vol(b)<vol(a)){icon='🔻'; cls='down';}
+      } else {
+        if (b.v!==a.v){ const laddersUp = vol(b)<=vol(a); icon = laddersUp?'🎉':'🔻'; cls = 'up';
+          // crude: treat variant change with volume reset as progression unless the variant name matches an earlier one
+          const seen = es.slice(0,i).map(x=>x.e.v);
+          if (seen.includes(b.v) && seen[seen.length-1] !== b.v){ icon='🔻'; cls='down'; }
+          what = `${a.v} → ${b.v} (${b.s}×${b.r}${b.kg?` ${b.kg}kg`:''})`;
+        } else if (vol(b)<vol(a)){ icon='🔻'; cls='down'; }
+      }
+      evs.push({date:es[i].date, name, pat:pat.label, icon, cls, what});
+    }
+  }
+  return evs.sort((x,y)=> y.date.localeCompare(x.date));
+}
+
+/* ---------- charts ---------- */
+function sparkline(name, pid){
+  const pts = entries(name, pid); const W=340,H=64,PAD=6;
+  const vals = pts.map(p=>vol(p.e));
+  const max = Math.max(...vals.filter(v=>v!=null)), min = Math.min(...vals.filter(v=>v!=null));
+  const x = i => PAD + i*(W-2*PAD)/(pts.length-1);
+  const y = v => max===min ? H/2 : H-PAD-(v-min)*(H-2*PAD)/(max-min);
+  let path='', segs=[];
+  vals.forEach((v,i)=>{ if(v==null){path=path?path+' ':''; return;} path += (path.endsWith('Z')||!path||vals[i-1]==null?`M${x(i)},${y(v)}`:` L${x(i)},${y(v)}`); });
+  // variant-change / band-change markers
+  const marks=[];
+  const es = pts.map(p=>p.e);
+  for(let i=1;i<es.length;i++){ const a=es[i-1],b=es[i]; if(!a||!b) continue;
+    if((b.v&&b.v!==a.v)||(b.band&&b.band!==a.band)) marks.push({i, label: b.v ? b.v.split(' ')[0] : b.band}); }
+  return `<svg viewBox="0 0 ${W} ${H}" aria-label="volume over sessions">
+    <path d="${path}" fill="none" stroke="var(--acc)" stroke-width="2" stroke-linecap="round"/>
+    ${vals.map((v,i)=> v==null ? `<circle cx="${x(i)}" cy="${H-PAD}" r="2" fill="var(--line)"/>`
+      : `<circle cx="${x(i)}" cy="${y(v)}" r="3" fill="var(--acc)"><title>${fmt(pts[i].date)} — ${posStr(es[i])} (${v} reps)</title></circle>`).join('')}
+    ${marks.map(m=>`<g><circle cx="${x(m.i)}" cy="${y(vals[m.i])}" r="6" fill="none" stroke="var(--acc)" stroke-width="2"/>
+      <text x="${x(m.i)}" y="${Math.max(10,y(vals[m.i])-10)}" font-size="9" fill="var(--mut)" text-anchor="middle">${m.label}</text></g>`).join('')}
+  </svg>`;
+}
+function bandStrip(name){
+  const pts = entries(name,'vpull');
+  return `<div class="bandstrip">${pts.map(p=>`<i class="${p.e?p.e.band:'abs'}" title="${fmt(p.date)}${p.e?' — '+p.e.band:' — absent'}"></i>`).join('')}</div>
+  <div class="bandlegend">band per session: black → yellow → blue → none (less assist = greener grass)</div>`;
+}
+
+/* ---------- variants ---------- */
+let sel = PLAYERS[0];
+const VARIANTS = {
+  A:{name:'Report card', render(){
+    return `<h1>Progress</h1><div class="sub">One player, all six journeys. Dots = sessions, rings = variant/band changes, gray floor dots = absent.</div>
+    <div class="chips">${PLAYERS.map(p=>`<button class="chip ${p===sel?'on':''}" onclick="pick('${p}')">${p.split(' ')[0]}</button>`).join('')}</div>
+    ${PATTERNS.map(pat=>{
+      const [ ,cur] = lastTwo(sel, pat.id); const t = trendOf(sel, pat.id);
+      return `<div class="card">
+        <div class="pathead"><span class="patname">${pat.label}</span><span class="current">${posStr(cur)}</span>
+          <span class="trend ${t.g}">${t.g==='up'?'▲':t.g==='down'?'▼':'▬'} ${t.label}</span></div>
+        ${sparkline(sel, pat.id)}
+        ${pat.pullup ? bandStrip(sel) : ''}
+      </div>`;}).join('')}`;
+  }},
+  B:{name:'Team board', render(){
+    return `<h1>Progress</h1><div class="sub">Whole squad at a glance — latest position + trend vs previous session. ▬ = static (nudge fodder).</div>
+    <div class="card" style="overflow-x:auto"><table>
+      <tr><th></th>${PATTERNS.map(p=>`<th>${p.label.replace('SL-','SL·')}</th>`).join('')}</tr>
+      ${PLAYERS.map(name=>`<tr><td class="g" style="font-size:13px">${name.split(' ')[0]}</td>
+        ${PATTERNS.map(pat=>{
+          const [,cur]=lastTwo(name,pat.id); const t=trendOf(name,pat.id);
+          return `<td><span class="g ${t.g}">${t.g==='up'?'▲':t.g==='down'?'▼':'▬'}</span> <span class="cellpos">${shortPos(cur)}</span>
+            ${t.g==='flat'&&t.n>=3?`<div><span class="flatbadge">static ×${t.n}</span></div>`:''}</td>`;}).join('')}</tr>`).join('')}
+    </table></div>
+    <div class="sub">▲ improved last session · ▼ regressed · ▬ unchanged (badge when ≥3 sessions static)</div>`;
+  }},
+  C:{name:'Changelog', render(){
+    const evs = changeEvents(); const byDate = {};
+    evs.forEach(e=>{ (byDate[e.date] ||= []).push(e); });
+    return `<h1>Progress</h1><div class="sub">What changed, newest first. Quiet sessions stay quiet.</div>
+    ${DATES.slice().reverse().map(d=>{
+      const list = byDate[d]||[];
+      return `<div class="sess"><div class="sessdate">${fmt(d)}</div>
+        ${list.length ? list.map(e=>`<div class="ev ${e.cls}"><span class="icon">${e.icon}</span>
+          <span><span class="who">${e.name.split(' ')[0]}</span> — ${e.pat}<div class="what">${e.what}</div></span></div>`).join('')
+        : `<div class="quiet">no changes — everyone held position</div>`}
+      </div>`;}).join('')}`;
+  }},
+};
+
+/* ---------- shell ---------- */
+const $=s=>document.querySelector(s);
+let current = new URLSearchParams(location.search).get('variant') || 'A';
+function render(){ $('#vlabel').textContent = `${current} — ${VARIANTS[current].name}`; $('#app').innerHTML = VARIANTS[current].render(); }
+function cycle(d){ const ks=Object.keys(VARIANTS); current = ks[(ks.indexOf(current)+d+ks.length)%ks.length];
+  history.replaceState(null,'',`?variant=${current}`); render(); }
+function pick(p){ sel=p; render(); }
+document.addEventListener('keydown', e=>{
+  if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName)) return;
+  if(e.key==='ArrowLeft')cycle(-1); if(e.key==='ArrowRight')cycle(1);
+});
+render();
+</script>
+</body>
+</html>
