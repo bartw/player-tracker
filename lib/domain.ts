@@ -38,6 +38,7 @@ export interface SessionRow {
   pageId: string;
   playerId: string;
   date: string; // YYYY-MM-DD
+  absent: boolean; // explicit absent row — patterns empty, but the absence itself is recorded
   patterns: PatternMap;
   notes: string;
 }

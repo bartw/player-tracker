@@ -11,6 +11,7 @@ type NotionPage = {
     rich_text?: { plain_text: string }[];
     date?: { start: string } | null;
     relation?: { id: string }[];
+    checkbox?: boolean;
   }>;
 };
 
@@ -51,31 +52,36 @@ export async function fetchSessions(): Promise<SessionRow[]> {
     const date = page.properties.Date?.date?.start?.slice(0, 10);
     const playerId = page.properties.Player?.relation?.[0]?.id;
     if (!date || !playerId) continue; // skeleton-test leftovers or hand-made rows
+    const absent = page.properties.Absent?.checkbox === true;
     const patterns: PatternMap = {};
-    for (const pat of PATTERNS) {
-      const parsed = parseEntry(text(page.properties[pat.label]));
-      if (parsed) patterns[pat.id] = parsed;
+    if (!absent) {
+      for (const pat of PATTERNS) {
+        const parsed = parseEntry(text(page.properties[pat.label]));
+        if (parsed) patterns[pat.id] = parsed;
+      }
     }
-    rows.push({ pageId: page.id, playerId, date, patterns, notes: text(page.properties.Notes) });
+    rows.push({ pageId: page.id, playerId, date, absent, patterns, notes: text(page.properties.Notes) });
   }
   return rows.sort((a, b) => b.date.localeCompare(a.date));
 }
 
-function rowProperties(playerId: string, playerName: string, date: string, patterns: PatternMap, notes: string) {
+function rowProperties(playerId: string, playerName: string, date: string, absent: boolean, patterns: PatternMap, notes: string) {
   const props: Record<string, unknown> = {
-    Name: { title: [{ text: { content: `${playerName} — ${date}` } }] },
+    Name: { title: [{ text: { content: `${playerName} — ${date}${absent ? " (absent)" : ""}` } }] },
     Player: { relation: [{ id: playerId }] },
     Date: { date: { start: date } },
+    Absent: { checkbox: absent },
     Notes: { rich_text: notes ? [{ text: { content: notes } }] : [] },
   };
   for (const pat of PATTERNS) {
-    const e = patterns[pat.id];
+    const e = absent ? undefined : patterns[pat.id];
     props[pat.label] = { rich_text: e ? [{ text: { content: canonical(e) } }] : [] };
   }
   return props;
 }
 
-/** Create or update the row for (player, date); archive it when absent. Returns what happened. */
+/** Create or update the row for (player, date). Absence is recorded, not omitted:
+ *  an absent player gets a row with Absent checked and empty pattern cells. */
 export async function upsertSessionRow(opts: {
   playerId: string;
   playerName: string;
@@ -84,25 +90,17 @@ export async function upsertSessionRow(opts: {
   patterns: PatternMap;
   notes: string;
   existingPageId?: string;
-}): Promise<"created" | "updated" | "archived" | "skipped"> {
+}): Promise<"created" | "updated"> {
   const notion = notionClient();
   const { playerId, playerName, date, absent, patterns, notes, existingPageId } = opts;
-  if (absent) {
-    if (!existingPageId) return "skipped";
-    // API 2026-03-11 renamed `archived` to `in_trash` on page updates.
-    await notion.pages.update({ page_id: existingPageId, in_trash: true } as never);
-    return "archived";
-  }
+  const properties = rowProperties(playerId, playerName, date, absent, patterns, notes) as never;
   if (existingPageId) {
-    await notion.pages.update({
-      page_id: existingPageId,
-      properties: rowProperties(playerId, playerName, date, patterns, notes) as never,
-    });
+    await notion.pages.update({ page_id: existingPageId, properties });
     return "updated";
   }
   await notion.pages.create({
     parent: { data_source_id: env("NOTION_SESSIONS_DS_ID") },
-    properties: rowProperties(playerId, playerName, date, patterns, notes) as never,
+    properties,
   });
   return "created";
 }

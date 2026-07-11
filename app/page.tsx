@@ -52,16 +52,17 @@ export default function EntryPage() {
     for (const p of players) {
       const existing = history.find((r) => r.playerId === p.id && r.date === date);
       const reachBack = prefillPatterns(history, p.id, date);
-      const patterns = clone(existing?.patterns ?? reachBack);
+      const wasAbsent = existing?.absent ?? false;
+      const patterns = clone(!wasAbsent && existing ? existing.patterns : reachBack);
       const skip: Draft["skip"] = {};
       for (const pat of PATTERNS) {
-        // A pattern missing from an existing row was skipped that day; keep the toggle on
-        // but fill the controls from reach-back in case it gets unskipped.
-        if (existing && !patterns[pat.id]) skip[pat.id] = true;
+        // A pattern missing from an existing (non-absent) row was skipped that day; keep the
+        // toggle on but fill the controls from reach-back in case it gets unskipped.
+        if (existing && !wasAbsent && !patterns[pat.id]) skip[pat.id] = true;
         if (!patterns[pat.id]) patterns[pat.id] = clone(reachBack[pat.id] ?? DEFAULT_ENTRY[pat.id]);
       }
       next[p.id] = {
-        absent: false,
+        absent: wasAbsent,
         patterns,
         skip,
         notes: existing?.notes ?? "",
@@ -192,7 +193,7 @@ export default function EntryPage() {
               className={`flex w-full items-center gap-2 p-3 text-left ${i > 0 ? "border-t border-neutral-200" : ""}`}>
               <span className="w-16 shrink-0 font-semibold">{first(p.name)}</span>
               <span className="min-w-0 flex-1 truncate text-sm text-neutral-500">
-                {d.absent ? "no row will be written"
+                {d.absent ? "absent — recorded without exercises"
                   : changed.length > 0 ? changed.map((id) => {
                       const label = PATTERNS.find((x) => x.id === id)!.label;
                       return d.skip[id] ? `${label} skipped` : label;
@@ -258,21 +259,25 @@ export default function EntryPage() {
           <div className="fixed inset-x-0 bottom-0 z-50 mx-auto max-h-[85vh] max-w-md overflow-auto rounded-t-2xl bg-white p-4">
             <h2 className="mb-1 text-lg font-bold">Write to Notion — {date}</h2>
             <p className="mb-3 text-sm text-neutral-500">
-              {players.filter((p) => !drafts[p.id].absent).length} rows
+              {players.length} rows
               {players.some((p) => drafts[p.id].absent) &&
-                ` · absent: ${players.filter((p) => drafts[p.id].absent).map((p) => first(p.name)).join(", ")}`}
+                ` · absent (recorded): ${players.filter((p) => drafts[p.id].absent).map((p) => first(p.name)).join(", ")}`}
             </p>
-            {players.filter((p) => !drafts[p.id].absent).map((p) => (
+            {players.map((p) => (
               <div key={p.id} className="mb-3 rounded-xl bg-neutral-50 p-3">
                 <div className="mb-1 font-semibold">{p.name}</div>
-                {PATTERNS.map((pat) => (
-                  <div key={pat.id} className="flex gap-2 font-mono text-xs leading-relaxed">
-                    <span className="w-16 shrink-0 text-neutral-400">{pat.label}</span>
-                    <span className={drafts[p.id].skip[pat.id] ? "italic text-neutral-400" : ""}>
-                      {drafts[p.id].skip[pat.id] ? "— skipped" : canonical(drafts[p.id].patterns[pat.id]!)}
-                    </span>
-                  </div>
-                ))}
+                {drafts[p.id].absent ? (
+                  <div className="font-mono text-xs italic text-neutral-400">absent — row saved with no exercises</div>
+                ) : (
+                  PATTERNS.map((pat) => (
+                    <div key={pat.id} className="flex gap-2 font-mono text-xs leading-relaxed">
+                      <span className="w-16 shrink-0 text-neutral-400">{pat.label}</span>
+                      <span className={drafts[p.id].skip[pat.id] ? "italic text-neutral-400" : ""}>
+                        {drafts[p.id].skip[pat.id] ? "— skipped" : canonical(drafts[p.id].patterns[pat.id]!)}
+                      </span>
+                    </div>
+                  ))
+                )}
               </div>
             ))}
             <button onClick={save} disabled={busy}

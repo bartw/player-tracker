@@ -70,6 +70,7 @@ async function main() {
         Name: { title: {} },
         Player: { relation: { data_source_id: playersDsId, single_property: {} } },
         Date: { date: {} },
+        Absent: { checkbox: {} },
         ...patternProps,
         Notes: { rich_text: {} },
       },
