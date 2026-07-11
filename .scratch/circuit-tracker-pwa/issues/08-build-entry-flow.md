@@ -25,3 +25,12 @@ Built as specified — confirm-sheet home, bottom-sheet editor (variant pickers 
 - Transient Notion "fetch failed" happened twice during verification; a Retry button now covers the load path, and failed saves report clearly with safe retry.
 
 Verified end-to-end against live Notion: full session written (5 rows, exact canonical strings), re-save updated in place, absent archived Tijs's row. All test rows trashed afterwards — the database is clean for the real first session. Note: the home page links to `/progress`, which 404s until the progress-view ticket builds it.
+
+## Comments
+
+**2026-07-11 — coach feedback after first use, both shipped:**
+
+1. **Per-pattern skip (injury)**: each pattern in the editor has a "skip (injury)" toggle; skipped patterns write no cell. Prefill now reaches back **per pattern** to the most recent row containing it, so a position survives an injury gap instead of resetting to defaults. A pattern missing from an existing row loads with its skip toggle on.
+2. **Unsaved-changes guard**: switching the session date with unsaved edits asks for confirmation; declining keeps date and edits.
+
+Also observed during verification: the coach added a player (Louis Mantels) directly in the Notion Players database — works as designed, roster is read from the database, so the in-app "add player" from the schema ticket may never be needed.
