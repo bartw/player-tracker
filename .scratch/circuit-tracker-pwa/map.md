@@ -34,6 +34,7 @@ A working PWA on the coach's phone, used after each Mon/Wed/Fri session to trans
 - [Deploy a walking skeleton](issues/07-walking-skeleton.md) — live at https://player-tracker-livid.vercel.app, PIN lock verified in production, both Notion databases created and seeded (IDs in the ticket's Answer), full write/read round-trip proven from the deployed app; secrets in `.env.local` + Vercel env vars.
 - [Build the entry flow](issues/08-build-entry-flow.md) — confirm sheet live in production: prefill from last row, bottom-sheet editor, nudges, backfill dates, canonical-string preview, (player,date) upsert; post-resolution coach feedback shipped as Comments: per-pattern injury skip, unsaved-changes date guard, and absence recorded as an explicit Absent-checkbox row; gotcha recorded: API `2026-03-11` uses `in_trash`, not `archived`.
 - [Build the progress view](issues/09-build-progress-view.md) — /progress live: team board (trend glyphs + static ×N stall badges) opening into per-player report cards (volume sparklines, variant/band change rings, pull-up band strip); trend rules per the prototype; verified on the coach's real backfilled data.
+- [Backfill the existing data through the app](issues/10-backfill-existing-data.md) — done by the coach via past-date entry: 44 rows over Jul 3/6/8/10 for all 11 players (roster grew from 5), absences and injury skips recorded; pre-Jul-3 sessions accepted as unrecoverable; old tracker retired by hand in Notion.
 
 ## Not yet specified
 
