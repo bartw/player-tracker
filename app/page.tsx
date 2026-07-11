@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   BANDS, Band, DEFAULT_ENTRY, LadderEntry, PATTERNS, PatternEntry, PatternId, PatternMap,
-  SessionRow, canonical, entriesEqual, prefillPatterns, staticStreak,
+  SessionRow, canonical, displayNames, entriesEqual, prefillPatterns, staticStreak,
 } from "@/lib/domain";
 
 interface Player { id: string; name: string }
@@ -19,7 +19,6 @@ type Draft = {
 };
 
 const today = () => new Date().toISOString().slice(0, 10);
-const first = (n: string) => n.split(" ")[0];
 const clone = <T,>(o: T): T => JSON.parse(JSON.stringify(o));
 
 export default function EntryPage() {
@@ -191,7 +190,7 @@ export default function EntryPage() {
           return (
             <button key={p.id} onClick={() => setSheet(p.id)}
               className={`flex w-full items-center gap-2 p-3 text-left ${i > 0 ? "border-t border-neutral-200" : ""}`}>
-              <span className="w-16 shrink-0 font-semibold">{first(p.name)}</span>
+              <span className="w-20 shrink-0 font-semibold">{displayNames(players)[p.id]}</span>
               <span className="min-w-0 flex-1 truncate text-sm text-neutral-500">
                 {d.absent ? "absent — recorded without exercises"
                   : changed.length > 0 ? changed.map((id) => {
@@ -261,7 +260,7 @@ export default function EntryPage() {
             <p className="mb-3 text-sm text-neutral-500">
               {players.length} rows
               {players.some((p) => drafts[p.id].absent) &&
-                ` · absent (recorded): ${players.filter((p) => drafts[p.id].absent).map((p) => first(p.name)).join(", ")}`}
+                ` · absent (recorded): ${players.filter((p) => drafts[p.id].absent).map((p) => displayNames(players)[p.id]).join(", ")}`}
             </p>
             {players.map((p) => (
               <div key={p.id} className="mb-3 rounded-xl bg-neutral-50 p-3">

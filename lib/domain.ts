@@ -85,6 +85,18 @@ export function entriesEqual(a: PatternEntry | undefined, b: PatternEntry | unde
   return canonical(a) === canonical(b);
 }
 
+/** Short display names: first name, with a last-name initial when first names collide ("Finn P."). */
+export function displayNames(players: { id: string; name: string }[]): Record<string, string> {
+  const firsts = players.map((p) => p.name.split(" ")[0]);
+  const out: Record<string, string> = {};
+  for (const p of players) {
+    const [firstName, ...rest] = p.name.split(" ");
+    const collides = firsts.filter((f) => f === firstName).length > 1;
+    out[p.id] = collides && rest.length > 0 ? `${firstName} ${rest[rest.length - 1][0]}.` : firstName;
+  }
+  return out;
+}
+
 /**
  * Prefill for (player, date): per pattern, the most recent entry strictly before `date`.
  * Reaching back per pattern (not per row) keeps an injured/skipped pattern's position
