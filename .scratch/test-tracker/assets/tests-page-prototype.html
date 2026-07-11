@@ -1,0 +1,148 @@
+<!doctype html>
+<!-- PROTOTYPE — throwaway. Answers test-tracker ticket 02: what should the tests page look like?
+     Four variants via ?variant= or the floating bar / arrow keys:
+     A = Station entry (one test, all players)   B = Player entry (one player, all tests)
+     C = Team Δ% table (view)                    D = Player progress cards (view)
+     Real 2026-07-01 baselines + FAKE W4 (2026-07-29) data. In-memory only. Delete when resolved. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROTOTYPE — Tests page</title>
+<style>
+  :root{--bg:#f4f5f7;--card:#fff;--ink:#1a1d21;--mut:#697077;--line:#e2e5e9;--acc:#0b6bcb;--up:#1a7f37;--up-bg:#e7f5ec;--down:#b3261e;--down-bg:#fbeae9;--chip:#eef1f4}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;font:16px/1.45 -apple-system,system-ui,sans-serif;background:var(--bg);color:var(--ink)}
+  .phone{max-width:430px;margin:0 auto;min-height:100vh;padding:12px 12px 96px}
+  h1{font-size:18px;margin:4px 0 2px}.sub{color:var(--mut);font-size:13px;margin-bottom:10px}
+  .datebar{display:flex;gap:8px;align-items:center;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px}
+  .datebar label{font-size:13px;color:var(--mut)} .datebar input{border:none;font:inherit;font-weight:600;background:transparent}
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px}
+  .chip{border:1px solid var(--line);border-radius:99px;padding:7px 12px;font:inherit;font-size:13px;background:var(--card)}
+  .chip.on{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px;margin-bottom:10px}
+  .row{display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--line)} .row:first-child{border-top:none}
+  .rname{width:84px;flex:none;font-weight:600;font-size:14px}
+  .last{font-size:11px;color:var(--mut);width:70px;flex:none;text-align:right}
+  input.val{font:inherit;font-size:17px;font-weight:600;width:96px;padding:8px;border:1px solid var(--line);border-radius:10px;background:#fafbfc;text-align:right}
+  .unit{font-size:12px;color:var(--mut);width:26px}
+  .testhead{font-size:11px;letter-spacing:.4px;text-transform:uppercase;color:var(--mut)}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  th{font-size:9px;letter-spacing:.3px;text-transform:uppercase;color:var(--mut);text-align:right;padding:5px 3px;border-bottom:1px solid var(--line)}
+  th:first-child{text-align:left} td{padding:6px 3px;border-bottom:1px solid var(--line);text-align:right;vertical-align:top}
+  td:first-child{text-align:left;font-weight:600}
+  .delta{display:inline-block;border-radius:6px;padding:0 4px;font-size:10px;font-weight:700}
+  .delta.up{background:var(--up-bg);color:var(--up)} .delta.down{background:var(--down-bg);color:var(--down)} .delta.zero{background:var(--chip);color:var(--mut)}
+  .pcard-test{display:flex;align-items:baseline;gap:8px;padding:7px 0;border-top:1px solid var(--line)} .pcard-test:first-child{border-top:none}
+  .trail{font-size:13px;color:var(--mut)} .trail b{color:var(--ink);font-size:15px}
+  .save{width:100%;padding:14px;font:inherit;font-weight:700;color:#fff;background:var(--acc);border:none;border-radius:14px;margin-top:8px}
+  .dump{white-space:pre-wrap;font:12px/1.6 ui-monospace,monospace;background:#101418;color:#c7e3ff;border-radius:12px;padding:12px;margin-top:10px;display:none}
+  .switcher{position:fixed;bottom:12px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:4px;background:#101418;color:#fff;border-radius:99px;padding:6px 10px;box-shadow:0 6px 20px rgba(0,0,0,.3);z-index:20;font-size:13px}
+  .switcher button{background:transparent;border:none;color:#fff;font-size:17px;padding:2px 8px}
+  .switcher b{min-width:190px;text-align:center;font-weight:600}
+</style>
+</head>
+<body>
+<div class="phone" id="app"></div>
+<div class="switcher"><button onclick="cycle(-1)">←</button><b id="vlabel"></b><button onclick="cycle(1)">→</button></div>
+
+<script>
+/* tests config: dir = +1 higher-better, -1 lower-better */
+const TESTS = [
+  {id:'sprint', label:'Sprint', unit:'s', dir:-1, step:'0.001'},
+  {id:'jump', label:'Jump', unit:'cm', dir:+1, step:'1'},
+  {id:'sjump', label:'Single Jump', unit:'cm', dir:+1, step:'1'},
+  {id:'ttest', label:'T-test', unit:'s', dir:-1, step:'0.01'},
+  {id:'push', label:'Push-ups', unit:'', dir:+1, step:'1'},
+  {id:'yoyo', label:'Yo-Yo', unit:'m', dir:+1, step:'20'},
+];
+const PLAYERS = ['Finn Pallen','Finn Schouterden','Jelte Kimpen','Lars Goris','Linus Wijnants','Louis Mantels','Senn Dols','Thibo Raymakers','Tijs Koninckx','Vince Windmolders','Vinz Hovens'];
+/* real baselines (2026-07-01) + FAKE W4 (2026-07-29) */
+const DATA = {
+ 'Lars Goris':      {'2026-07-01':{sprint:2.302,jump:512,sjump:183,ttest:14.22,push:20,yoyo:700}, '2026-07-29':{sprint:2.25,jump:530,sjump:190,ttest:13.80,push:26,yoyo:820}},
+ 'Senn Dols':       {'2026-07-01':{sprint:2.417,jump:488,sjump:165,ttest:13.23,push:27,yoyo:540}, '2026-07-29':{sprint:2.38,jump:495,sjump:172,ttest:13.10,push:31,yoyo:640}},
+ 'Finn Pallen':     {'2026-07-01':{sprint:2.435,jump:510,sjump:181,ttest:14.41,push:26,yoyo:320}, '2026-07-29':{sprint:2.47,jump:515,sjump:184,ttest:14.10,push:29,yoyo:440}},
+ 'Linus Wijnants':  {'2026-07-01':{sprint:2.235,jump:506,sjump:181,ttest:12.41,push:30,yoyo:740}, '2026-07-29':{sprint:2.18,jump:522,sjump:188,ttest:12.05,push:35,yoyo:860}},
+ 'Tijs Koninckx':   {'2026-07-01':{sprint:2.45,jump:463,sjump:146,ttest:16.65,push:26,yoyo:300},  '2026-07-29':{sprint:2.41,jump:480,sjump:155,ttest:15.90,push:28,yoyo:380}},
+ 'Jelte Kimpen':    {'2026-07-29':{sprint:2.52,jump:445,sjump:150,ttest:15.2,push:18,yoyo:360}},
+};
+const first = n => { const f=n.split(' ')[0]; return PLAYERS.filter(p=>p.split(' ')[0]===f).length>1 ? f+' '+n.split(' ').pop()[0]+'.' : f; };
+const state = { date:'2026-07-29', test:'sprint', player:'Linus Wijnants', entry:{} }; // entry[player][test] = typed value
+
+const baselineOf = (p,t) => { const dates=Object.keys(DATA[p]??{}).sort(); for(const d of dates){ const v=DATA[p][d][t]; if(v!=null) return {v,d}; } return null; };
+const latestOf = (p,t) => { const dates=Object.keys(DATA[p]??{}).sort().reverse(); for(const d of dates){ const v=DATA[p][d][t]; if(v!=null) return {v,d}; } return null; };
+function delta(p,t){ const b=baselineOf(p,t), l=latestOf(p,t); if(!b||!l||b.d===l.d) return null;
+  const dir=TESTS.find(x=>x.id===t).dir; const pct=dir*(l.v-b.v)/b.v*100; return Math.round(pct*10)/10; }
+const dBadge = pct => pct==null?'' : `<span class="delta ${pct>0?'up':pct<0?'down':'zero'}">${pct>0?'+':''}${pct}%</span>`;
+
+const $=s=>document.querySelector(s);
+function setEntry(p,t,v){ (state.entry[p] ??= {})[t]=v; }
+function saveDump(){
+  const rows=[];
+  for(const p of PLAYERS){ const e=state.entry[p]; if(!e||Object.values(e).every(v=>!v)) continue;
+    rows.push(`— ${p} — ${state.date}\n`+TESTS.filter(t=>e[t.id]).map(t=>`   ${t.label.padEnd(12)} ${e[t.id]}${t.unit}`).join('\n')); }
+  const d=$('#dump'); d.style.display='block';
+  d.textContent = rows.length ? `WOULD WRITE ${rows.length} ROWS (prototype writes nothing)\n\n${rows.join('\n\n')}` : 'Nothing entered yet — type some values first.';
+}
+
+const VARIANTS = {
+ A:{name:'Station entry', render(){
+   const t=TESTS.find(x=>x.id===state.test);
+   return `<h1>Test day</h1><div class="sub">Station-style: one test, whole squad — like running the stopwatch down the line.</div>
+   <div class="datebar"><label>Test day</label><input type="date" value="${state.date}" onchange="state.date=this.value"></div>
+   <div class="chips">${TESTS.map(x=>`<button class="chip ${x.id===state.test?'on':''}" onclick="state.test='${x.id}';render()">${x.label}</button>`).join('')}</div>
+   <div class="card">${PLAYERS.map(p=>{
+     const last=latestOf(p,t.id); const typed=state.entry[p]?.[t.id]??'';
+     return `<div class="row"><span class="rname">${first(p)}</span>
+       <span class="last">${last?`last ${last.v}${t.unit}`:'no data'}</span>
+       <input class="val" type="number" inputmode="decimal" step="${t.step}" placeholder="—" value="${typed}"
+         oninput="setEntry('${p}','${t.id}',this.value)">
+       <span class="unit">${t.unit}</span></div>`;}).join('')}</div>
+   <button class="save" onclick="saveDump()">Save test day → Notion</button><div class="dump" id="dump"></div>`;
+ }},
+ B:{name:'Player entry', render(){
+   const p=state.player;
+   return `<h1>Test day</h1><div class="sub">Per player: one kid, all six tests.</div>
+   <div class="datebar"><label>Test day</label><input type="date" value="${state.date}" onchange="state.date=this.value"></div>
+   <div class="chips">${PLAYERS.map(x=>`<button class="chip ${x===p?'on':''}" onclick="state.player='${x}';render()">${first(x)}</button>`).join('')}</div>
+   <div class="card">${TESTS.map(t=>{
+     const last=latestOf(p,t.id); const typed=state.entry[p]?.[t.id]??'';
+     return `<div class="row"><span class="rname testhead" style="width:96px">${t.label}</span>
+       <span class="last">${last?`last ${last.v}${t.unit}`:'no data'}</span>
+       <input class="val" type="number" inputmode="decimal" step="${t.step}" placeholder="—" value="${typed}"
+         oninput="setEntry('${p}','${t.id}',this.value)">
+       <span class="unit">${t.unit}</span></div>`;}).join('')}</div>
+   <button class="save" onclick="saveDump()">Save test day → Notion</button><div class="dump" id="dump"></div>`;
+ }},
+ C:{name:'Team Δ% table', render(){
+   return `<h1>Test progress</h1><div class="sub">Latest value + Δ% vs own baseline. Green is better — direction handled per test (faster sprint = green).</div>
+   <div class="card" style="overflow-x:auto"><table>
+     <tr><th></th>${TESTS.map(t=>`<th>${t.label}</th>`).join('')}</tr>
+     ${PLAYERS.map(p=>`<tr><td>${first(p)}</td>${TESTS.map(t=>{
+       const l=latestOf(p,t.id); if(!l) return '<td style="color:var(--mut)">—</td>';
+       return `<td>${l.v}${dBadge(delta(p,t.id))?'<br>'+dBadge(delta(p,t.id)):''}</td>`;}).join('')}</tr>`).join('')}
+   </table></div>
+   <div class="sub">Players without any test day yet show —.</div>`;
+ }},
+ D:{name:'Player cards', render(){
+   return `<h1>Test progress</h1><div class="sub">Per player: baseline → latest per test, Δ% badge.</div>
+   <div class="chips">${PLAYERS.map(x=>`<button class="chip ${x===state.player?'on':''}" onclick="state.player='${x}';render()">${first(x)}</button>`).join('')}</div>
+   <div class="card">${TESTS.map(t=>{
+     const b=baselineOf(state.player,t.id), l=latestOf(state.player,t.id);
+     if(!l) return `<div class="pcard-test"><span class="testhead" style="width:96px">${t.label}</span><span class="trail">no data</span></div>`;
+     const trail = b&&b.d!==l.d ? `${b.v}${t.unit} → <b>${l.v}${t.unit}</b>` : `<b>${l.v}${t.unit}</b> <span style="font-size:11px">(baseline only)</span>`;
+     return `<div class="pcard-test"><span class="testhead" style="width:96px">${t.label}</span>
+       <span class="trail">${trail}</span><span style="margin-left:auto">${dBadge(delta(state.player,t.id))}</span></div>`;}).join('')}</div>`;
+ }},
+};
+
+let current=new URLSearchParams(location.search).get('variant')||'A';
+function render(){ $('#vlabel').textContent=`${current} — ${VARIANTS[current].name}`; $('#app').innerHTML=VARIANTS[current].render(); }
+function cycle(d){ const ks=Object.keys(VARIANTS); current=ks[(ks.indexOf(current)+d+ks.length)%ks.length];
+  history.replaceState(null,'',`?variant=${current}`); render(); }
+document.addEventListener('keydown',e=>{ if(['INPUT','TEXTAREA','SELECT'].includes(document.activeElement.tagName))return;
+  if(e.key==='ArrowLeft')cycle(-1); if(e.key==='ArrowRight')cycle(1); });
+render();
+</script>
+</body>
+</html>

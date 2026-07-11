@@ -4,7 +4,7 @@
     {
       "name": "prototype-static",
       "runtimeExecutable": "python3",
-      "runtimeArgs": ["-m", "http.server", "8123", "--directory", ".scratch/circuit-tracker-pwa/assets"],
+      "runtimeArgs": ["-m", "http.server", "8123", "--directory", ".scratch"],
       "port": 8123
     }
   ]
