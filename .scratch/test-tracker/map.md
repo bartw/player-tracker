@@ -20,6 +20,8 @@ The deployed circuit-tracker app gains a separate `/tests` page: record test res
 
 <!-- one line per closed ticket: gist + link -->
 
+- [Create the Test Results database and backfill baselines](issues/01-create-db-backfill.md) — Test Results (app) created (IDs in the Answer) and all 5 baselines backfilled as 2026-07-01 rows via `scripts/setup-tests.ts`; `NOTION_TESTS_DS_ID` in `.env.local`, still to add on Vercel before the build ships.
+
 ## Not yet specified
 
 <!-- nothing — the route is fully ticketed; fog may reappear from the prototype -->
