@@ -32,6 +32,7 @@ A working PWA on the coach's phone, used after each Mon/Wed/Fri session to trans
 - [Prototype the progress view](issues/05-progress-view-prototype.md) — "B home → A detail" won: Team board grid (trend glyphs + loud static ×N badges; primary question is "who's stuck?") opening into per-player Report cards (volume sparklines, ringed variant/band markers, pull-up band strip); volume-as-axis and band-first pull-up reading validated; prototype at [progress-view-prototype.html](assets/progress-view-prototype.html).
 - [Pick the concrete stack](issues/06-pick-concrete-stack.md) — Next.js App Router (TS) at repo root, pnpm, Tailwind; proxy = `app/api/*` route handlers with Notion SDK v5 pinned to `2026-03-11`; `middleware.ts` + handler re-check enforce the PIN cookie; manifest + no-op SW for the PWA; secrets in Vercel env vars; deploy tracks `main`.
 - [Deploy a walking skeleton](issues/07-walking-skeleton.md) — live at https://player-tracker-livid.vercel.app, PIN lock verified in production, both Notion databases created and seeded (IDs in the ticket's Answer), full write/read round-trip proven from the deployed app; secrets in `.env.local` + Vercel env vars.
+- [Build the entry flow](issues/08-build-entry-flow.md) — confirm sheet live in production: prefill from last row, bottom-sheet editor, nudges, backfill dates, canonical-string preview, (player,date) upsert, absent = archived row; verified end-to-end against live Notion, test rows cleaned; gotcha recorded: API `2026-03-11` uses `in_trash`, not `archived`.
 
 ## Not yet specified
 
