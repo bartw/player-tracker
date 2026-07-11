@@ -42,7 +42,7 @@ A working PWA on the coach's phone, used after each Mon/Wed/Fri session to trans
 
 ## Out of scope
 
-- **Test results tracking** (Player Test Tracker) — stays in Notion as-is; only 3 entry moments (BL/W4/W8), no app needed.
+- **Test results tracking** (Player Test Tracker) — stays in Notion as-is; only 3 entry moments (BL/W4/W8), no app needed. *(Since redrawn as its own effort: [Test Tracker page map](../test-tracker/map.md).)*
 - **Session running / progressions / session skeleton** — the app doesn't plan or run sessions.
 - **Attendance** — not tracked anywhere today; ruled out during charting.
 - **Player/parent access** — coach-only; revisit only as a new effort.
