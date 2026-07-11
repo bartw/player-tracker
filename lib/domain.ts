@@ -84,6 +84,23 @@ export function entriesEqual(a: PatternEntry | undefined, b: PatternEntry | unde
   return canonical(a) === canonical(b);
 }
 
+/**
+ * Prefill for (player, date): per pattern, the most recent entry strictly before `date`.
+ * Reaching back per pattern (not per row) keeps an injured/skipped pattern's position
+ * alive across the sessions it was missing from.
+ */
+export function prefillPatterns(history: SessionRow[], playerId: string, date: string): PatternMap {
+  const rows = history
+    .filter((r) => r.playerId === playerId && r.date < date)
+    .sort((a, b) => b.date.localeCompare(a.date));
+  const out: PatternMap = {};
+  for (const pat of PATTERNS) {
+    const row = rows.find((r) => r.patterns[pat.id]);
+    if (row) out[pat.id] = row.patterns[pat.id];
+  }
+  return out;
+}
+
 /** "Unchanged for N sessions" when a pattern has been identical for >= 3 of the player's rows. */
 export function staticStreak(history: SessionRow[], playerId: string, pattern: PatternId): number {
   const rows = history

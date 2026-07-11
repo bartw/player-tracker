@@ -6,11 +6,17 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   BANDS, Band, DEFAULT_ENTRY, LadderEntry, PATTERNS, PatternEntry, PatternId, PatternMap,
-  SessionRow, canonical, entriesEqual, staticStreak,
+  SessionRow, canonical, entriesEqual, prefillPatterns, staticStreak,
 } from "@/lib/domain";
 
 interface Player { id: string; name: string }
-type Draft = { absent: boolean; patterns: PatternMap; notes: string; hasHistory: boolean };
+type Draft = {
+  absent: boolean;
+  patterns: PatternMap;
+  skip: Partial<Record<PatternId, boolean>>; // injured / can't perform today → no cell written
+  notes: string;
+  hasHistory: boolean;
+};
 
 const today = () => new Date().toISOString().slice(0, 10);
 const first = (n: string) => n.split(" ")[0];
@@ -23,6 +29,7 @@ export default function EntryPage() {
   const [history, setHistory] = useState<SessionRow[]>([]);
   const [date, setDate] = useState(today());
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const [dirty, setDirty] = useState(false);
   const [sheet, setSheet] = useState<string | null>(null); // playerId being edited
   const [preview, setPreview] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -44,17 +51,25 @@ export default function EntryPage() {
     const next: Record<string, Draft> = {};
     for (const p of players) {
       const existing = history.find((r) => r.playerId === p.id && r.date === date);
-      const prev = history.find((r) => r.playerId === p.id && r.date < date);
-      const source = existing ?? prev;
+      const reachBack = prefillPatterns(history, p.id, date);
+      const patterns = clone(existing?.patterns ?? reachBack);
+      const skip: Draft["skip"] = {};
+      for (const pat of PATTERNS) {
+        // A pattern missing from an existing row was skipped that day; keep the toggle on
+        // but fill the controls from reach-back in case it gets unskipped.
+        if (existing && !patterns[pat.id]) skip[pat.id] = true;
+        if (!patterns[pat.id]) patterns[pat.id] = clone(reachBack[pat.id] ?? DEFAULT_ENTRY[pat.id]);
+      }
       next[p.id] = {
         absent: false,
-        patterns: source ? clone(source.patterns) : clone(DEFAULT_ENTRY),
+        patterns,
+        skip,
         notes: existing?.notes ?? "",
-        hasHistory: !!source,
+        hasHistory: !!existing || Object.keys(reachBack).length > 0,
       };
-      for (const pat of PATTERNS) if (!next[p.id].patterns[pat.id]) next[p.id].patterns[pat.id] = clone(DEFAULT_ENTRY[pat.id]);
     }
     setDrafts(next);
+    setDirty(false);
   }, [players, history, date]);
 
   const baseline = useMemo(() => {
@@ -69,11 +84,26 @@ export default function EntryPage() {
   function changedPatterns(pid: string): PatternId[] {
     const d = drafts[pid];
     if (!d) return [];
-    return PATTERNS.filter((pat) => !entriesEqual(d.patterns[pat.id], baseline[pid]?.[pat.id])).map((p) => p.id);
+    return PATTERNS.filter((pat) => {
+      const draftEntry = d.skip[pat.id] ? undefined : d.patterns[pat.id];
+      return !entriesEqual(draftEntry, baseline[pid]?.[pat.id]);
+    }).map((p) => p.id);
   }
 
   function setEntry(pid: string, pat: PatternId, e: PatternEntry) {
+    setDirty(true);
     setDrafts((d) => ({ ...d, [pid]: { ...d[pid], patterns: { ...d[pid].patterns, [pat]: e } } }));
+  }
+
+  function toggleSkip(pid: string, pat: PatternId) {
+    setDirty(true);
+    setDrafts((d) => ({ ...d, [pid]: { ...d[pid], skip: { ...d[pid].skip, [pat]: !d[pid].skip[pat] } } }));
+  }
+
+  function changeDate(next: string) {
+    if (next === date) return;
+    if (dirty && !window.confirm("You have unsaved changes for this session. Switch date and lose them?")) return;
+    setDate(next);
   }
 
   async function unlock(e: React.FormEvent) {
@@ -88,10 +118,12 @@ export default function EntryPage() {
 
   async function save() {
     setBusy(true); setMsg("");
-    const entries = players.map((p) => ({
-      playerId: p.id, playerName: p.name,
-      absent: drafts[p.id].absent, patterns: drafts[p.id].patterns, notes: drafts[p.id].notes,
-    }));
+    const entries = players.map((p) => {
+      const d = drafts[p.id];
+      const patterns: PatternMap = {};
+      for (const pat of PATTERNS) if (!d.skip[pat.id]) patterns[pat.id] = d.patterns[pat.id];
+      return { playerId: p.id, playerName: p.name, absent: d.absent, patterns, notes: d.notes };
+    });
     const res = await fetch("/api/log-session", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ date, entries }),
     });
@@ -145,7 +177,7 @@ export default function EntryPage() {
 
       <div className="mb-3 flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white p-3">
         <label className="text-sm text-neutral-500">Session</label>
-        <input type="date" value={date} max={today()} onChange={(e) => setDate(e.target.value)}
+        <input type="date" value={date} max={today()} onChange={(e) => changeDate(e.target.value)}
           className="rounded-lg font-semibold" />
         {isBackfill && <span className="ml-auto rounded-full bg-amber-100 px-2 py-0.5 text-xs text-amber-800">backfill</span>}
       </div>
@@ -161,9 +193,12 @@ export default function EntryPage() {
               <span className="w-16 shrink-0 font-semibold">{first(p.name)}</span>
               <span className="min-w-0 flex-1 truncate text-sm text-neutral-500">
                 {d.absent ? "no row will be written"
+                  : changed.length > 0 ? changed.map((id) => {
+                      const label = PATTERNS.find((x) => x.id === id)!.label;
+                      return d.skip[id] ? `${label} skipped` : label;
+                    }).join(" · ")
                   : !d.hasHistory ? "first entry — starting positions"
-                  : changed.length === 0 ? "carries last session forward"
-                  : changed.map((id) => PATTERNS.find((x) => x.id === id)!.label).join(" · ")}
+                  : "carries last session forward"}
               </span>
               <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs ${
                 d.absent ? "bg-amber-100 text-amber-800"
@@ -191,7 +226,7 @@ export default function EntryPage() {
               <h2 className="text-lg font-bold">{sheetPlayer.name}</h2>
               <label className="ml-auto flex items-center gap-2 text-sm text-neutral-500">
                 <input type="checkbox" checked={drafts[sheetPlayer.id].absent}
-                  onChange={(e) => setDrafts((d) => ({ ...d, [sheetPlayer.id]: { ...d[sheetPlayer.id], absent: e.target.checked } }))} />
+                  onChange={(e) => { setDirty(true); setDrafts((d) => ({ ...d, [sheetPlayer.id]: { ...d[sheetPlayer.id], absent: e.target.checked } })); }} />
                 absent
               </label>
             </div>
@@ -200,11 +235,13 @@ export default function EntryPage() {
                 <PatternEditor key={pat.id} patternId={pat.id} entry={drafts[sheetPlayer.id].patterns[pat.id]!}
                   streak={staticStreak(history.filter((r) => r.date < date), sheetPlayer.id, pat.id)}
                   changed={!entriesEqual(drafts[sheetPlayer.id].patterns[pat.id], baseline[sheetPlayer.id]?.[pat.id])}
+                  skipped={!!drafts[sheetPlayer.id].skip[pat.id]}
+                  onToggleSkip={() => toggleSkip(sheetPlayer.id, pat.id)}
                   onChange={(e) => setEntry(sheetPlayer.id, pat.id, e)} />
               ))}
               <label className="mt-3 block text-xs uppercase tracking-wide text-neutral-500">Notes</label>
               <input value={drafts[sheetPlayer.id].notes}
-                onChange={(e) => setDrafts((d) => ({ ...d, [sheetPlayer.id]: { ...d[sheetPlayer.id], notes: e.target.value } }))}
+                onChange={(e) => { setDirty(true); setDrafts((d) => ({ ...d, [sheetPlayer.id]: { ...d[sheetPlayer.id], notes: e.target.value } })); }}
                 className="mt-1 w-full rounded-xl border border-neutral-300 p-2" placeholder="optional" />
             </div>
             <button onClick={() => setSheet(null)} className="mt-4 w-full rounded-xl bg-blue-700 p-3 font-semibold text-white">
@@ -231,7 +268,9 @@ export default function EntryPage() {
                 {PATTERNS.map((pat) => (
                   <div key={pat.id} className="flex gap-2 font-mono text-xs leading-relaxed">
                     <span className="w-16 shrink-0 text-neutral-400">{pat.label}</span>
-                    <span>{canonical(drafts[p.id].patterns[pat.id]!)}</span>
+                    <span className={drafts[p.id].skip[pat.id] ? "italic text-neutral-400" : ""}>
+                      {drafts[p.id].skip[pat.id] ? "— skipped" : canonical(drafts[p.id].patterns[pat.id]!)}
+                    </span>
                   </div>
                 ))}
               </div>
@@ -257,14 +296,22 @@ function Stepper({ value, onChange, min = 0, suffix }: { value: number; onChange
   );
 }
 
-function PatternEditor({ patternId, entry, streak, changed, onChange }: {
-  patternId: PatternId; entry: PatternEntry; streak: number; changed: boolean; onChange: (e: PatternEntry) => void;
+function PatternEditor({ patternId, entry, streak, changed, skipped, onToggleSkip, onChange }: {
+  patternId: PatternId; entry: PatternEntry; streak: number; changed: boolean;
+  skipped: boolean; onToggleSkip: () => void; onChange: (e: PatternEntry) => void;
 }) {
   const def = PATTERNS.find((p) => p.id === patternId)!;
   return (
     <div className="border-t border-neutral-200 py-2.5 first:border-t-0">
-      <div className="mb-1.5 text-xs uppercase tracking-wide text-neutral-500">{def.label}</div>
-      {entry.kind === "pullup" ? (
+      <div className="mb-1.5 flex items-center text-xs uppercase tracking-wide text-neutral-500">
+        {def.label}
+        <button type="button" onClick={onToggleSkip}
+          className={`ml-auto rounded-full border px-2 py-0.5 text-[11px] normal-case tracking-normal ${
+            skipped ? "border-amber-300 bg-amber-100 text-amber-800" : "border-neutral-300 text-neutral-400"}`}>
+          {skipped ? "skipped — tap to include" : "skip (injury)"}
+        </button>
+      </div>
+      {skipped ? null : entry.kind === "pullup" ? (
         <div className="flex flex-wrap items-center gap-1.5">
           {entry.reps.map((r, i) => (
             <Stepper key={i} value={r} onChange={(v) => {
@@ -294,7 +341,7 @@ function PatternEditor({ patternId, entry, streak, changed, onChange }: {
           {def.kg && <Stepper value={(entry as LadderEntry).kg ?? 0} suffix="kg" onChange={(v) => onChange({ ...entry, kg: v || undefined })} />}
         </div>
       )}
-      {streak >= 3 && !changed && (
+      {streak >= 3 && !changed && !skipped && (
         <div className="mt-1.5 rounded-lg bg-amber-50 px-2 py-1 text-xs text-amber-800">
           💡 Unchanged for {streak} sessions — time to progress?
         </div>
