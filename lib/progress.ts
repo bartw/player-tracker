@@ -110,11 +110,11 @@ const MIN_RANK_POOL = 3;
 
 /**
  * Roster-wide competition rank per pattern, keyed by playerId. Ordered by ladder
- * step/band index first — the same signal trend() treats as dominant — with
- * volume as tiebreak, except on the two kg-tracked patterns where kg tiebreaks
- * instead. Players with no recorded position for the pattern are excluded from
- * both rank and pool. Empty below MIN_RANK_POOL so no one shows a degenerate
- * "1st of 1"/"1st of 2".
+ * step/band index first — the same signal trend() treats as dominant — then by
+ * volume, then (on the two kg-tracked patterns) by kg, matching trend()'s own
+ * "kg breaks volume ties" convention. Players with no recorded position for the
+ * pattern are excluded from both rank and pool. Empty below MIN_RANK_POOL so no
+ * one shows a degenerate "1st of 1"/"1st of 2".
  */
 export function ranks(history: SessionRow[], patternId: PatternId): Record<string, RankInfo> {
   const pattern = PATTERNS.find((p) => p.id === patternId)!;
@@ -123,19 +123,19 @@ export function ranks(history: SessionRow[], patternId: PatternId): Record<strin
   const entries = playerIds.flatMap((playerId) => {
     const e = latestEntry(playerRows(history, playerId), patternId);
     if (!e) return [];
-    const tiebreak = pattern.kg && e.kind === "ladder" ? (e.kg ?? 0) : volume(e);
-    return [{ playerId, stepIndex: stepIndex(patternId, e), tiebreak }];
+    const kg = pattern.kg && e.kind === "ladder" ? (e.kg ?? 0) : 0;
+    return [{ playerId, stepIndex: stepIndex(patternId, e), volume: volume(e), kg }];
   });
 
   if (entries.length < MIN_RANK_POOL) return {};
 
-  entries.sort((a, b) => b.stepIndex - a.stepIndex || b.tiebreak - a.tiebreak);
+  entries.sort((a, b) => b.stepIndex - a.stepIndex || b.volume - a.volume || b.kg - a.kg);
 
   const out: Record<string, RankInfo> = {};
   let rank = 0;
   let prevKey = "";
   entries.forEach((e, i) => {
-    const key = `${e.stepIndex}|${e.tiebreak}`;
+    const key = `${e.stepIndex}|${e.volume}|${e.kg}`;
     if (key !== prevKey) { rank = i + 1; prevKey = key; }
     out[e.playerId] = { rank, pool: entries.length };
   });
