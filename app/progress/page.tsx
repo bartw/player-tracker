@@ -5,11 +5,22 @@
 
 import { useEffect, useState } from "react";
 import { BANDS, PATTERNS, PatternId, SessionRow, canonical, displayNames } from "@/lib/domain";
-import { SeriesPoint, latestEntry, playerRows, series, shortPos, trend } from "@/lib/progress";
+import { SeriesPoint, latestEntry, playerRows, ranks, series, shortPos, trend } from "@/lib/progress";
 
 interface Player { id: string; name: string }
 
 const fmt = (d: string) => new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+
+function ordinal(n: number): string {
+  const v = n % 100;
+  if (v >= 11 && v <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1: return `${n}st`;
+    case 2: return `${n}nd`;
+    case 3: return `${n}rd`;
+    default: return `${n}th`;
+  }
+}
 
 const GLYPH = { up: "▲", down: "▼", flat: "▬" } as const;
 const GLYPH_CLASS = { up: "text-emerald-700", down: "text-red-700", flat: "text-amber-700" } as const;
@@ -127,11 +138,17 @@ function ReportCard({ player, history, onBack }: {
         const pts = series(rows, pat.id);
         const t = trend(rows, pat.id);
         const cur = latestEntry(rows, pat.id);
+        const rankInfo = ranks(history, pat.id)[player.id];
         return (
           <div key={pat.id} className="mb-3 rounded-2xl border border-neutral-200 bg-white p-3">
             <div className="mb-1 flex items-baseline gap-2">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-neutral-500">{pat.label}</span>
               <span className="text-sm font-bold">{cur ? canonical(cur) : "—"}</span>
+              {rankInfo && (
+                <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] font-semibold text-neutral-600">
+                  {ordinal(rankInfo.rank)} of {rankInfo.pool}
+                </span>
+              )}
               <span className={`ml-auto text-xs ${GLYPH_CLASS[t.glyph]}`}>{GLYPH[t.glyph]} {t.label}</span>
             </div>
             <Sparkline points={pts} />

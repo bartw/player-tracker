@@ -27,6 +27,11 @@ function ladderIndex(patternId: PatternId, variant: string): number {
   return PATTERNS.find((p) => p.id === patternId)!.ladder.indexOf(variant);
 }
 
+/** Where an entry sits on its pattern's ladder/band, higher = more advanced. */
+function stepIndex(patternId: PatternId, e: PatternEntry): number {
+  return e.kind === "pullup" ? BANDS.indexOf(e.band) : ladderIndex(patternId, e.variant);
+}
+
 /** All of a player's rows (absent included), oldest first. */
 export function playerRows(history: SessionRow[], playerId: string): SessionRow[] {
   return history
@@ -69,12 +74,12 @@ export function trend(rows: SessionRow[], patternId: PatternId): Trend {
   const prev = entries[entries.length - 2];
 
   if (cur.kind === "pullup" && prev.kind === "pullup") {
-    const d = BANDS.indexOf(cur.band) - BANDS.indexOf(prev.band);
+    const d = stepIndex(patternId, cur) - stepIndex(patternId, prev);
     if (d > 0) return { glyph: "up", label: "band ↓", staticCount: 0 };
     if (d < 0) return { glyph: "down", label: "band ↑", staticCount: 0 };
   }
   if (cur.kind === "ladder" && prev.kind === "ladder" && cur.variant !== prev.variant) {
-    const d = ladderIndex(patternId, cur.variant) - ladderIndex(patternId, prev.variant);
+    const d = stepIndex(patternId, cur) - stepIndex(patternId, prev);
     if (d > 0) return { glyph: "up", label: "variant ↑", staticCount: 0 };
     if (d < 0) return { glyph: "down", label: "variant ↓", staticCount: 0 };
     return { glyph: "up", label: "new variant", staticCount: 0 };
@@ -94,6 +99,47 @@ export function trend(rows: SessionRow[], patternId: PatternId): Trend {
   const key = canonical(cur);
   for (let i = entries.length - 2; i >= 0 && canonical(entries[i]) === key; i--) n++;
   return { glyph: "flat", label: `static ×${n}`, staticCount: n };
+}
+
+export interface RankInfo {
+  rank: number; // 1-based, competition ranking (ties share a rank, next rank skips)
+  pool: number; // players with data for this pattern
+}
+
+const MIN_RANK_POOL = 3;
+
+/**
+ * Roster-wide competition rank per pattern, keyed by playerId. Ordered by ladder
+ * step/band index first — the same signal trend() treats as dominant — with
+ * volume as tiebreak, except on the two kg-tracked patterns where kg tiebreaks
+ * instead. Players with no recorded position for the pattern are excluded from
+ * both rank and pool. Empty below MIN_RANK_POOL so no one shows a degenerate
+ * "1st of 1"/"1st of 2".
+ */
+export function ranks(history: SessionRow[], patternId: PatternId): Record<string, RankInfo> {
+  const pattern = PATTERNS.find((p) => p.id === patternId)!;
+  const playerIds = Array.from(new Set(history.map((r) => r.playerId)));
+
+  const entries = playerIds.flatMap((playerId) => {
+    const e = latestEntry(playerRows(history, playerId), patternId);
+    if (!e) return [];
+    const tiebreak = pattern.kg && e.kind === "ladder" ? (e.kg ?? 0) : volume(e);
+    return [{ playerId, stepIndex: stepIndex(patternId, e), tiebreak }];
+  });
+
+  if (entries.length < MIN_RANK_POOL) return {};
+
+  entries.sort((a, b) => b.stepIndex - a.stepIndex || b.tiebreak - a.tiebreak);
+
+  const out: Record<string, RankInfo> = {};
+  let rank = 0;
+  let prevKey = "";
+  entries.forEach((e, i) => {
+    const key = `${e.stepIndex}|${e.tiebreak}`;
+    if (key !== prevKey) { rank = i + 1; prevKey = key; }
+    out[e.playerId] = { rank, pool: entries.length };
+  });
+  return out;
 }
 
 /** Short position for board cells: "3×8 6kg" / "5/4/3 yellow". */
