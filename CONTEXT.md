@@ -30,6 +30,9 @@ _Avoid_: Skipped, no-show
 **Static streak**: The number of consecutive sessions a player's position on a pattern hasn't changed — the signal for "time to progress?".
 _Avoid_: Plateau, stall (stall is fine informally but static streak is the precise term)
 
+**Rank**: A player's competition-style ordinal standing among teammates on one pattern — ladder step/band first, volume (or kg) as tiebreak, ties sharing a rank with the next rank skipped. Scoped to players who have data for that pattern; suppressed below a minimum pool size.
+_Avoid_: Percentile, score, leaderboard position
+
 ### Physical testing
 
 **Test**: One of six standardized fitness measures — sprint, jump, single jump, T-test, push-ups, Yo-Yo — recorded on a test day.
