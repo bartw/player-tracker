@@ -5,6 +5,8 @@
 // view = team Δ% table home → player card detail; entry = station-style test day.
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { isUnauthenticated } from "@/lib/auth-fetch";
 import { displayNames } from "@/lib/domain";
 import {
   TEST_DEFS, TestId, TestRow, TestValues, baselineValue, deltaPct, latestValue,
@@ -23,9 +25,9 @@ function DeltaBadge({ pct }: { pct: number | null }) {
 }
 
 export default function TestsPage() {
+  const router = useRouter();
   const [players, setPlayers] = useState<Player[]>([]);
   const [rows, setRows] = useState<TestRow[]>([]);
-  const [locked, setLocked] = useState(false);
   const [msg, setMsg] = useState("");
   const [mode, setMode] = useState<"view" | "entry">("view");
   const [selected, setSelected] = useState<string | null>(null); // playerId for card detail
@@ -37,7 +39,7 @@ export default function TestsPage() {
 
   async function load() {
     const res = await fetch("/api/test-history");
-    if (res.status === 401) return setLocked(true);
+    if (isUnauthenticated(res.status)) return router.replace("/sign-in");
     const data = await res.json();
     if (data.error) return setMsg(data.error);
     setPlayers(data.players);
@@ -73,13 +75,6 @@ export default function TestsPage() {
   const typedCount = players.reduce(
     (n, p) => n + TEST_DEFS.filter((d) => (typed[p.id]?.[d.id] ?? "") !== "").length, 0);
 
-  if (locked) {
-    return (
-      <main className="mx-auto max-w-md p-4">
-        <p className="text-neutral-500">Locked — unlock on the <a className="text-blue-700" href="/">log page</a> first.</p>
-      </main>
-    );
-  }
   if (players.length === 0) {
     return (
       <main className="mx-auto max-w-md p-4">

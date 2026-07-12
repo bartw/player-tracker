@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { AUTH_COOKIE, env, sha256Hex } from "@/lib/notion";
 import { PatternMap } from "@/lib/domain";
 import { fetchSessions, upsertSessionRow } from "@/lib/sessions";
 
@@ -15,9 +14,6 @@ interface LogEntry {
 
 export async function POST(req: NextRequest) {
   try {
-    if (req.cookies.get(AUTH_COOKIE)?.value !== (await sha256Hex(env("APP_PIN")))) {
-      return NextResponse.json({ error: "locked" }, { status: 401 });
-    }
     const { date, entries } = (await req.json()) as { date: string; entries: LogEntry[] };
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Array.isArray(entries)) {
       return NextResponse.json({ error: "bad request" }, { status: 400 });

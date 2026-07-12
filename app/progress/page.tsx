@@ -4,6 +4,8 @@
 // Team board grid (stall detection first), tap a player for their report card.
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { isUnauthenticated } from "@/lib/auth-fetch";
 import { BANDS, PATTERNS, PatternId, SessionRow, canonical, displayNames } from "@/lib/domain";
 import { SeriesPoint, latestEntry, playerRows, ranks, series, shortPos, trend } from "@/lib/progress";
 
@@ -26,15 +28,15 @@ const GLYPH = { up: "▲", down: "▼", flat: "▬" } as const;
 const GLYPH_CLASS = { up: "text-emerald-700", down: "text-red-700", flat: "text-amber-700" } as const;
 
 export default function ProgressPage() {
+  const router = useRouter();
   const [players, setPlayers] = useState<Player[]>([]);
   const [history, setHistory] = useState<SessionRow[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [msg, setMsg] = useState("");
-  const [locked, setLocked] = useState(false);
 
   async function load() {
     const res = await fetch("/api/history");
-    if (res.status === 401) return setLocked(true);
+    if (isUnauthenticated(res.status)) return router.replace("/sign-in");
     const data = await res.json();
     if (data.error) return setMsg(data.error);
     setPlayers(data.players);
@@ -42,13 +44,6 @@ export default function ProgressPage() {
   }
   useEffect(() => { load(); }, []);
 
-  if (locked) {
-    return (
-      <main className="mx-auto max-w-md p-4">
-        <p className="text-neutral-500">Locked — unlock on the <a className="text-blue-700" href="/">log page</a> first.</p>
-      </main>
-    );
-  }
   if (players.length === 0) {
     return (
       <main className="mx-auto max-w-md p-4">

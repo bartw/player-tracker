@@ -4,6 +4,8 @@
 // (.scratch/circuit-tracker-pwa/issues/04-entry-ui-prototype.md).
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { isUnauthenticated } from "@/lib/auth-fetch";
 import {
   BANDS, Band, DEFAULT_ENTRY, LadderEntry, PATTERNS, PatternEntry, PatternId, PatternMap,
   SessionRow, canonical, displayNames, entriesEqual, prefillPatterns, staticStreak,
@@ -22,8 +24,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const clone = <T,>(o: T): T => JSON.parse(JSON.stringify(o));
 
 export default function EntryPage() {
-  const [locked, setLocked] = useState<boolean | null>(null);
-  const [pin, setPin] = useState("");
+  const router = useRouter();
   const [players, setPlayers] = useState<Player[]>([]);
   const [history, setHistory] = useState<SessionRow[]>([]);
   const [date, setDate] = useState(today());
@@ -36,10 +37,9 @@ export default function EntryPage() {
 
   async function load() {
     const res = await fetch("/api/history");
-    if (res.status === 401) return setLocked(true);
+    if (isUnauthenticated(res.status)) return router.replace("/sign-in");
     const data = await res.json();
     if (data.error) return setMsg(data.error);
-    setLocked(false);
     setPlayers(data.players);
     setHistory(data.sessions);
   }
@@ -106,16 +106,6 @@ export default function EntryPage() {
     setDate(next);
   }
 
-  async function unlock(e: React.FormEvent) {
-    e.preventDefault();
-    setBusy(true); setMsg("");
-    const res = await fetch("/api/unlock", {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pin }),
-    });
-    setBusy(false);
-    if (res.ok) { setPin(""); setLocked(null); load(); } else setMsg("Wrong PIN");
-  }
-
   async function save() {
     setBusy(true); setMsg("");
     const entries = players.map((p) => {
@@ -135,23 +125,7 @@ export default function EntryPage() {
     load();
   }
 
-  if (locked === true) {
-    return (
-      <main className="mx-auto max-w-md p-4">
-        <h1 className="mb-4 text-xl font-bold">Circuit Tracker</h1>
-        <form onSubmit={unlock} className="rounded-2xl border border-neutral-200 bg-white p-4">
-          <label className="mb-2 block text-sm text-neutral-500">PIN</label>
-          <input type="password" inputMode="numeric" value={pin} onChange={(e) => setPin(e.target.value)}
-            className="mb-3 w-full rounded-xl border border-neutral-300 p-3 text-lg" autoFocus />
-          <button disabled={busy || !pin} className="w-full rounded-xl bg-blue-700 p-3 font-semibold text-white disabled:opacity-50">
-            Unlock
-          </button>
-          {msg && <p className="mt-2 text-sm text-red-600">{msg}</p>}
-        </form>
-      </main>
-    );
-  }
-  if (locked === null || players.length === 0) {
+  if (players.length === 0) {
     return (
       <main className="mx-auto max-w-md p-4">
         <p className="text-neutral-500">{msg ? `Couldn't reach Notion: ${msg}` : "Loading…"}</p>
