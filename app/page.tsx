@@ -172,7 +172,10 @@ export default function EntryPage() {
     <main className="mx-auto max-w-md p-4 pb-28">
       <div className="mb-3 flex items-baseline justify-between">
         <h1 className="text-xl font-bold">Log session</h1>
-        <a href="/progress" className="text-sm font-medium text-blue-700">Progress →</a>
+        <span className="space-x-3 text-sm font-medium">
+          <a href="/progress" className="text-blue-700">Progress</a>
+          <a href="/tests" className="text-blue-700">Tests</a>
+        </span>
       </div>
 
       <div className="mb-3 flex items-center gap-2 rounded-2xl border border-neutral-200 bg-white p-3">

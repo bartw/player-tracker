@@ -55,7 +55,10 @@ export default function ProgressPage() {
     <main className="mx-auto max-w-md p-4 pb-16">
       <div className="mb-3 flex items-baseline justify-between">
         <h1 className="text-xl font-bold">Progress</h1>
-        <a href="/" className="text-sm font-medium text-blue-700">← Log session</a>
+        <span className="space-x-3 text-sm font-medium">
+          <a href="/" className="text-blue-700">Log session</a>
+          <a href="/tests" className="text-blue-700">Tests</a>
+        </span>
       </div>
       {player ? <ReportCard player={player} history={history} onBack={() => setSelected(null)} />
               : <TeamBoard players={players} history={history} onSelect={setSelected} />}
