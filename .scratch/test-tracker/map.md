@@ -22,6 +22,9 @@ The deployed circuit-tracker app gains a separate `/tests` page: record test res
 
 - [Create the Test Results database and backfill baselines](issues/01-create-db-backfill.md) — Test Results (app) created (IDs in the Answer) and all 5 baselines backfilled as 2026-07-01 rows via `scripts/setup-tests.ts`; `NOTION_TESTS_DS_ID` in `.env.local`, still to add on Vercel before the build ships.
 - [Prototype the tests page](issues/02-tests-page-prototype.md) — entry = station-style (one test, squad list, last-value hints, blank = not tested); view = team Δ% table home → player card detail; direction-aware Δ% validated (sprint/T-test lower-is-better); prototype at [tests-page-prototype.html](assets/tests-page-prototype.html).
+- [Build the tests page](issues/03-build-tests-page.md) — /tests live in production and verified: Δ% table → player cards, station-style test-day entry with per-station merge saves; domain/I-O split keeps the SDK out of the client bundle; env var on Vercel.
+
+**Destination reached 2026-07-12** — no open tickets remain.
 
 ## Not yet specified
 
